@@ -330,47 +330,52 @@ struct ContentView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @State private var selectedTab = 0
     
+    private let darkTabBarBackground = Color(red: 0.15, green: 0.15, blue: 0.2)
+    
     var body: some View {
-        TabView(selection: $selectedTab) {
-            TranslateView()
-                .tabItem {
-                    Image(systemName: "textformat.abc")
-                    Text("Translate")
-                }
-                .tag(0)
+        ZStack {
             
-            LanguageListView()
-                .tabItem {
-                    Image(systemName: "list.bullet")
-                    Text("Languages")
-                }
-                .tag(1)
-            
-            CreateLanguageView()
-                .tabItem {
-                    Image(systemName: "plus.circle")
-                    Text("Create")
-                }
-                .tag(2)
-            
-            HowToView()
-                .tabItem {
-                    Image(systemName: "questionmark.circle")
-                    Text("How To")
-                }
-                .tag(3)
-            
-            SettingsView()
-                .tabItem {
-                    Image(systemName: "gear")
-                    Text("Settings")
-                }
-                .tag(4)
+            TabView(selection: $selectedTab) {
+                TranslateView()
+                    .tabItem {
+                        Image(systemName: "textformat.abc")
+                        Text("Translate")
+                    }
+                    .tag(0)
+                
+                LanguageListView()
+                    .tabItem {
+                        Image(systemName: "list.bullet")
+                        Text("Languages")
+                    }
+                    .tag(1)
+                
+                CreateLanguageView()
+                    .tabItem {
+                        Image(systemName: "plus.circle")
+                        Text("Create")
+                    }
+                    .tag(2)
+                
+                HowToView()
+                    .tabItem {
+                        Image(systemName: "questionmark.circle")
+                        Text("How To")
+                    }
+                    .tag(3)
+                
+                SettingsView()
+                    .tabItem {
+                        Image(systemName: "gear")
+                        Text("Settings")
+                    }
+                    .tag(4)
+            }
+            .accentColor(.purple)
+            .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
         }
-        .accentColor(.purple)
-        .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
         .onAppear {
-            setupTabBarAppearance()
+            setupCustomTabBarAppearance()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SwitchToLanguagesTab"))) { _ in
             selectedTab = 1
@@ -383,32 +388,28 @@ struct ContentView: View {
         }
     }
     
-    private func setupTabBarAppearance() {
+    private func setupCustomTabBarAppearance() {
         let tabBarAppearance = UITabBarAppearance()
         
         // Configure for different states
         tabBarAppearance.configureWithOpaqueBackground()
         
-        // Set background color based on theme
-        if themeManager.isDarkMode {
-            tabBarAppearance.backgroundColor = UIColor.systemGray6
-        } else {
-            tabBarAppearance.backgroundColor = UIColor.systemBackground
-        }
+        // Set dark background color for tab bar
+        tabBarAppearance.backgroundColor = UIColor(darkTabBarBackground)
         
         // Add subtle shadow
-        tabBarAppearance.shadowColor = UIColor.systemGray4
+        tabBarAppearance.shadowColor = UIColor.black.withAlphaComponent(0.3)
         
-        // Selected item color
+        // Selected item color - bright white for contrast
         tabBarAppearance.stackedLayoutAppearance.selected.iconColor = UIColor.systemPurple
         tabBarAppearance.stackedLayoutAppearance.selected.titleTextAttributes = [
             .foregroundColor: UIColor.systemPurple
         ]
         
-        // Normal item color
-        tabBarAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.systemGray
+        // Normal item color - light gray for contrast against dark background
+        tabBarAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.lightGray
         tabBarAppearance.stackedLayoutAppearance.normal.titleTextAttributes = [
-            .foregroundColor: UIColor.systemGray
+            .foregroundColor: UIColor.lightGray
         ]
         
         // Apply to all tab bar states
@@ -417,7 +418,7 @@ struct ContentView: View {
         
         // Add subtle border
         UITabBar.appearance().layer.borderWidth = 0.5
-        UITabBar.appearance().layer.borderColor = UIColor.systemGray4.cgColor
+        UITabBar.appearance().layer.borderColor = UIColor.black.withAlphaComponent(0.2).cgColor
     }
 }
 
@@ -435,6 +436,7 @@ struct TranslateView: View {
     @State private var isDecryptMode = false
     
     private let freeCharacterLimit = 100
+    private let darkHeaderBackground = Color(red: 0.15, green: 0.15, blue: 0.2)
     
     var accessibleLanguages: [CustomLanguage] {
         languageManager.getAccessibleLanguages(isPremium: premiumManager.isPremium)
@@ -445,208 +447,234 @@ struct TranslateView: View {
     }
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                // Language Selector
-                if !accessibleLanguages.isEmpty {
-                    Picker("Select Language", selection: $languageManager.selectedLanguage) {
-                        ForEach(accessibleLanguages) { language in
-                            Text(language.name).tag(language as CustomLanguage?)
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-                    .padding(.horizontal)
-                    .onChange(of: languageManager.selectedLanguage) {
-                        // Ensure selected language is accessible
-                        if let selected = languageManager.selectedLanguage,
-                           !languageManager.isLanguageAccessible(selected, isPremium: premiumManager.isPremium) {
-                            languageManager.selectedLanguage = accessibleLanguages.first
-                        }
-                    }
-                }
+        VStack(spacing: 0) {
+            // Custom Dark Header
+            ZStack {
+                darkHeaderBackground
+                    .ignoresSafeArea(edges: .top)
                 
-                // Mode Toggle
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Mode")
-                            .font(.headline)
-                        Spacer()
-                    }
+                HStack {
+                    Text("Oobada")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
                     
-                    Picker("Translation Mode", selection: $isDecryptMode) {
-                        Text("🔒 Encrypt").tag(false)
-                        Text("🔓 Decrypt").tag(true)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .onChange(of: isDecryptMode) {
-                        updateTranslation()
-                    }
-                }
-                .padding(.horizontal)
-                
-                // Input Section
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(isDecryptMode ? "Encrypted Text" : "Original Text")
-                            .font(.headline)
-                        Spacer()
-                        
-                        // Clear button and character count
-                        HStack(spacing: 8) {
-                            if !currentInputText.isEmpty {
-                                Button("Clear") {
-                                    if isDecryptMode {
-                                        decryptInputText = ""
-                                    } else {
-                                        encryptInputText = ""
-                                    }
-                                    updateTranslation()
-                                }
-                                .font(.caption)
-                                .foregroundColor(.red)
-                            }
-                            
-                            if !premiumManager.isPremium {
-                                Text("\(currentInputText.count)/\(freeCharacterLimit)")
-                                    .font(.caption)
-                                    .foregroundColor(currentInputText.count > freeCharacterLimit ? .red : .gray)
-                            }
-                        }
-                    }
+                    Spacer()
                     
-                    TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
-                        .frame(minHeight: 100)
-                        .padding(8)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
-                        .overlay(
-                            // Placeholder text
-                            Group {
-                                if currentInputText.isEmpty {
-                                    Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
-                                        .foregroundColor(.gray)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 16)
-                                        .allowsHitTesting(false)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                }
-                            }
-                        )
-                        .onChange(of: encryptInputText) {
-                            if !isDecryptMode {
-                                if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
-                                    encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
-                                }
-                                updateTranslation()
-                            }
-                        }
-                        .onChange(of: decryptInputText) {
-                            if isDecryptMode {
-                                if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
-                                    decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
-                                }
-                                updateTranslation()
-                            }
-                        }
-                }
-                .padding(.horizontal)
-                
-                // Translation Section
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(isDecryptMode ? "Decrypted Text" : "Translated Text")
-                            .font(.headline)
-                        Spacer()
-                        
-                        // Action buttons
-                        HStack(spacing: 12) {
-                            if premiumManager.isPremium && !translatedText.isEmpty && MFMessageComposeViewController.canSendText() {
-                                Button("Send SMS") {
-                                    showMessageComposer = true
-                                }
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.green)
-                                .cornerRadius(6)
-                            }
-                            
-                            Button("Copy") {
-                                UIPasteboard.general.string = translatedText
-                                showCopiedAlert = true
-                            }
-                            .disabled(translatedText.isEmpty)
-                        }
-                    }
-                    
-                    ScrollView {
-                        Text(translatedText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                            .background(isDecryptMode ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
-                            .cornerRadius(8)
-                            .textSelection(.enabled)
-                    }
-                    .frame(minHeight: 100)
-                }
-                .padding(.horizontal)
-                
-                // Premium Prompt
-                if !premiumManager.isPremium {
-                    VStack(spacing: 8) {
-                        Text("Want longer messages, unlimited languages, and SMS sending?")
-                            .font(.subheadline)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("Upgrade to Premium") {
-                            premiumManager.showPaywall = true
-                        }
-                        .buttonStyle(PremiumButtonStyle())
-                    }
-                    .padding(.horizontal)
-                }
-                
-                Spacer()
-            }
-            .navigationTitle("Oobada")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         hideKeyboard()
                     }
+                    .foregroundColor(.white)
                     .opacity(isKeyboardVisible ? 1 : 0)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                .padding(.bottom, 15)
             }
-            .alert("Copied!", isPresented: $showCopiedAlert) {
-                Button("OK") { }
-            }
-            .alert("Message Result", isPresented: $showMessageResult) {
-                Button("OK") { }
-            } message: {
-                Text(messageResultText)
-            }
-            .sheet(isPresented: $showMessageComposer) {
-                if MFMessageComposeViewController.canSendText() {
-                    MessageComposer(
-                        isShowing: $showMessageComposer,
-                        message: translatedText
-                    ) { result in
-                        handleMessageResult(result)
+            
+            // Main Content
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Language Selector
+                    if !accessibleLanguages.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Select Language")
+                                    .font(.headline)
+                                Spacer()
+                            }
+                            
+                            Picker("Select Language", selection: $languageManager.selectedLanguage) {
+                                ForEach(accessibleLanguages) { language in
+                                    Text(language.name).tag(language as CustomLanguage?)
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .onChange(of: languageManager.selectedLanguage) {
+                                // Ensure selected language is accessible
+                                if let selected = languageManager.selectedLanguage,
+                                   !languageManager.isLanguageAccessible(selected, isPremium: premiumManager.isPremium) {
+                                    languageManager.selectedLanguage = accessibleLanguages.first
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
                     }
-                }
-            }
-            .onTapGesture {
-                hideKeyboard()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumStatusChanged"))) { notification in
-                if let isPremium = notification.object as? Bool {
-                    languageManager.handlePremiumStatusChange(isPremium: isPremium)
+                    
+                    // Mode Toggle
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Mode")
+                                .font(.headline)
+                            Spacer()
+                        }
+                        
+                        Picker("Translation Mode", selection: $isDecryptMode) {
+                            Text("🔒 Encrypt").tag(false)
+                            Text("🔓 Decrypt").tag(true)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .onChange(of: isDecryptMode) {
+                            updateTranslation()
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Input Section
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(isDecryptMode ? "Encrypted Text" : "Original Text")
+                                .font(.headline)
+                            Spacer()
+                            
+                            // Clear button and character count
+                            HStack(spacing: 8) {
+                                if !currentInputText.isEmpty {
+                                    Button("Clear") {
+                                        if isDecryptMode {
+                                            decryptInputText = ""
+                                        } else {
+                                            encryptInputText = ""
+                                        }
+                                        updateTranslation()
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                }
+                                
+                                if !premiumManager.isPremium {
+                                    Text("\(currentInputText.count)/\(freeCharacterLimit)")
+                                        .font(.caption)
+                                        .foregroundColor(currentInputText.count > freeCharacterLimit ? .red : .gray)
+                                }
+                            }
+                        }
+                        
+                        TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
+                            .frame(minHeight: 100)
+                            .padding(8)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                            .overlay(
+                                // Placeholder text
+                                Group {
+                                    if currentInputText.isEmpty {
+                                        Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
+                                            .foregroundColor(.gray)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 16)
+                                            .allowsHitTesting(false)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    }
+                                }
+                            )
+                            .onChange(of: encryptInputText) {
+                                if !isDecryptMode {
+                                    if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
+                                        encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
+                                    }
+                                    updateTranslation()
+                                }
+                            }
+                            .onChange(of: decryptInputText) {
+                                if isDecryptMode {
+                                    if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
+                                        decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
+                                    }
+                                    updateTranslation()
+                                }
+                            }
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Translation Section
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(isDecryptMode ? "Decrypted Text" : "Translated Text")
+                                .font(.headline)
+                            Spacer()
+                            
+                            // Action buttons
+                            HStack(spacing: 12) {
+                                if premiumManager.isPremium && !translatedText.isEmpty && MFMessageComposeViewController.canSendText() {
+                                    Button("Send SMS") {
+                                        showMessageComposer = true
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.green)
+                                    .cornerRadius(6)
+                                }
+                                
+                                Button("Copy") {
+                                    UIPasteboard.general.string = translatedText
+                                    showCopiedAlert = true
+                                }
+                                .disabled(translatedText.isEmpty)
+                            }
+                        }
+                        
+                        ScrollView {
+                            Text(translatedText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                                .background(isDecryptMode ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+                                .textSelection(.enabled)
+                        }
+                        .frame(minHeight: 100)
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Premium Prompt
+                    if !premiumManager.isPremium {
+                        VStack(spacing: 8) {
+                            Text("Want longer messages, unlimited languages, and SMS sending?")
+                                .font(.subheadline)
+                                .multilineTextAlignment(.center)
+                            
+                            Button("Upgrade to Premium") {
+                                premiumManager.showPaywall = true
+                            }
+                            .buttonStyle(PremiumButtonStyle())
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    Spacer(minLength: 40)
                 }
             }
         }
-        .navigationViewStyle(StackNavigationViewStyle())
+        .background(Color.clear) // Let the sky blue background show through
+        .alert("Copied!", isPresented: $showCopiedAlert) {
+            Button("OK") { }
+        }
+        .alert("Message Result", isPresented: $showMessageResult) {
+            Button("OK") { }
+        } message: {
+            Text(messageResultText)
+        }
+        .sheet(isPresented: $showMessageComposer) {
+            if MFMessageComposeViewController.canSendText() {
+                MessageComposer(
+                    isShowing: $showMessageComposer,
+                    message: translatedText
+                ) { result in
+                    handleMessageResult(result)
+                }
+            }
+        }
+        .onTapGesture {
+            hideKeyboard()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumStatusChanged"))) { notification in
+            if let isPremium = notification.object as? Bool {
+                languageManager.handlePremiumStatusChange(isPremium: isPremium)
+            }
+        }
     }
     
     private func updateTranslation() {
@@ -1510,153 +1538,420 @@ struct LanguageDetailView: View {
 
 // MARK: - How To View
 struct HowToView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @State private var selectedStep: Int? = nil
+    
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Welcome Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "hand.wave.fill")
-                                .foregroundColor(.yellow)
-                                .font(.title2)
-                            Text("Welcome to Oobada!")
-                                .font(.title2)
-                                .fontWeight(.bold)
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 20) {
+                    // Hero Section
+                    VStack(spacing: 16) {
+                        ZStack {
+                            Circle()
+                                .fill(LinearGradient(
+                                    gradient: Gradient(colors: [.purple.opacity(0.8), .blue.opacity(0.6)]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ))
+                                .frame(width: 80, height: 80)
+                            
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 32, weight: .medium))
+                                .foregroundColor(.white)
                         }
                         
-                        Text("Create your own secret languages and share encrypted messages with friends! Here's how to get started:")
-                            .font(.body)
-                            .foregroundColor(.secondary)
+                        VStack(spacing: 8) {
+                            Text("Welcome to Oobada!")
+                                .font(.title)
+                                .fontWeight(.bold)
+                                .multilineTextAlignment(.center)
+                            
+                            Text("Create secret languages and share encrypted messages with friends")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+                        }
+                    }
+                    .padding(.top, 20)
+                    .padding(.bottom, 10)
+                    
+                    // Quick Start Cards
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text("Quick Start Guide")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        VStack(spacing: 12) {
+                            StepCard(
+                                stepNumber: 1,
+                                icon: "plus.circle.fill",
+                                iconColor: .green,
+                                title: "Create Your Language",
+                                description: "Design your cipher with custom mappings",
+                                isExpanded: selectedStep == 1,
+                                steps: [
+                                    "Navigate to the 'Create' tab",
+                                    "Enter a unique name for your language",
+                                    "Map each letter A-Z to new characters",
+                                    "Use 'Generate for Me' for instant creation",
+                                    "Save your masterpiece"
+                                ]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    selectedStep = selectedStep == 1 ? nil : 1
+                                }
+                            }
+                            
+                            StepCard(
+                                stepNumber: 2,
+                                icon: "square.and.arrow.up.fill",
+                                iconColor: .purple,
+                                title: "Share Language Key",
+                                description: "Let friends decrypt your messages",
+                                isExpanded: selectedStep == 2,
+                                steps: [
+                                    "Open 'Languages' tab",
+                                    "Tap your language name",
+                                    "Hit 'Share' in top-left corner",
+                                    "Send via text, email, or AirDrop"
+                                ]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    selectedStep = selectedStep == 2 ? nil : 2
+                                }
+                            }
+                            
+                            StepCard(
+                                stepNumber: 3,
+                                icon: "square.and.arrow.down.fill",
+                                iconColor: .orange,
+                                title: "Import Friend's Key",
+                                description: "Add languages shared with you",
+                                isExpanded: selectedStep == 3,
+                                steps: [
+                                    "Visit the 'Languages' tab",
+                                    "Tap 'Import' button",
+                                    "Paste the received language key",
+                                    "Confirm import - it's now ready!"
+                                ]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    selectedStep = selectedStep == 3 ? nil : 3
+                                }
+                            }
+                            
+                            StepCard(
+                                stepNumber: 4,
+                                icon: "lock.fill",
+                                iconColor: .blue,
+                                title: "Encrypt Messages",
+                                description: "Transform text into secret code",
+                                isExpanded: selectedStep == 4,
+                                steps: [
+                                    "Go to the 'Translate' tab",
+                                    "Select your language from dropdown",
+                                    "Choose '🔒 Encrypt' mode",
+                                    "Type your secret message",
+                                    "Copy the encrypted result"
+                                ]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    selectedStep = selectedStep == 4 ? nil : 4
+                                }
+                            }
+                            
+                            StepCard(
+                                stepNumber: 5,
+                                icon: "lock.open.fill",
+                                iconColor: .green,
+                                title: "Decrypt Messages",
+                                description: "Reveal hidden messages",
+                                isExpanded: selectedStep == 5,
+                                steps: [
+                                    "Return to 'Translate' tab",
+                                    "Select the matching language",
+                                    "Switch to '🔓 Decrypt' mode",
+                                    "Paste encrypted message",
+                                    "Read the revealed secret!"
+                                ]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    selectedStep = selectedStep == 5 ? nil : 5
+                                }
+                            }
+                        }
                     }
                     
-                    // Step-by-step guides
-                    InstructionSection(
-                        icon: "plus.circle.fill",
-                        iconColor: .green,
-                        title: "1. Create Your First Language",
-                        steps: [
-                            "Go to the 'Create' tab",
-                            "Enter a name for your language (e.g., 'Secret Code')",
-                            "Map each letter A-Z to something new:",
-                            "  • Manually: Type custom characters for each letter",
-                            "  • Automatically: Tap 'Generate for Me' for instant mapping",
-                            "Tap 'Save' when finished"
-                        ]
-                    )
-                    
-                    InstructionSection(
-                        icon: "textformat.abc.dottedunderline",
-                        iconColor: .blue,
-                        title: "2. Encrypt Messages",
-                        steps: [
-                            "Go to the 'Translate' tab",
-                            "Select your language from the dropdown",
-                            "Make sure '🔒 Encrypt' mode is selected",
-                            "Type your message in 'Original Text'",
-                            "Your encrypted message appears in 'Translated Text'",
-                            "Tap 'Copy' to share it anywhere!"
-                        ]
-                    )
-                    
-                    InstructionSection(
-                        icon: "square.and.arrow.up.fill",
-                        iconColor: .purple,
-                        title: "3. Share Your Language Key",
-                        steps: [
-                            "Go to 'Languages' tab and tap your language",
-                            "Tap 'Share' in the top-left corner",
-                            "Send the language key to your friend via:",
-                            "  • Text message",
-                            "  • Email",
-                            "  • AirDrop",
-                            "  • Any messaging app"
-                        ]
-                    )
-                    
-                    InstructionSection(
-                        icon: "square.and.arrow.down.fill",
-                        iconColor: .orange,
-                        title: "4. Import a Friend's Language",
-                        steps: [
-                            "Go to the 'Languages' tab",
-                            "Tap 'Import' in the top-left corner",
-                            "Paste the language key your friend sent you",
-                            "Tap 'Import' - the language is now in your app!"
-                        ]
-                    )
-                    
-                    InstructionSection(
-                        icon: "lock.open.fill",
-                        iconColor: .green,
-                        title: "5. Decrypt Messages",
-                        steps: [
-                            "Go to the 'Translate' tab",
-                            "Select the same language used to encrypt",
-                            "Switch to '🔓 Decrypt' mode",
-                            "Paste the encrypted message in 'Encrypted Text'",
-                            "The original message appears in 'Decrypted Text'!"
-                        ]
-                    )
-                    
-                    // Tips Section
-                    VStack(alignment: .leading, spacing: 12) {
+                    // Pro Tips Section
+                    VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             Image(systemName: "lightbulb.fill")
                                 .foregroundColor(.yellow)
-                                .font(.title2)
+                                .font(.title3)
                             Text("Pro Tips")
                                 .font(.title2)
-                                .fontWeight(.bold)
+                                .fontWeight(.semibold)
+                            Spacer()
                         }
+                        .padding(.horizontal, 20)
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            TipRow(text: "Use 'Generate for Me' for quick, fun language creation")
-                            TipRow(text: "Try different styles: Shuffled Letters, Emojis, Symbols, etc.")
-                            TipRow(text: "Both you and your friend need the same language to communicate")
-                            TipRow(text: "If you edit a language, reshare it with your contacts")
-                            TipRow(text: "Premium users can create unlimited languages and send SMS")
-                            TipRow(text: "Free users get 1 language and 100 character limit")
+                        LazyVStack(spacing: 8) {
+                            ProTipRow(
+                                icon: "wand.and.stars",
+                                tip: "Use 'Generate for Me' for instant, creative language styles"
+                            )
+                            ProTipRow(
+                                icon: "arrow.triangle.2.circlepath",
+                                tip: "Both users need the same language key to communicate"
+                            )
+                            ProTipRow(
+                                icon: "crown.fill",
+                                tip: "Premium unlocks unlimited languages and SMS sending"
+                            )
+                            ProTipRow(
+                                icon: "exclamationmark.triangle.fill",
+                                tip: "Reshare updated languages after making changes"
+                            )
                         }
+                        .padding(.horizontal, 20)
                     }
-                    .padding()
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
+                    .padding(.vertical, 10)
                     
                     // Example Section
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 16) {
                         HStack {
                             Image(systemName: "doc.text.fill")
                                 .foregroundColor(.blue)
-                                .font(.title2)
+                                .font(.title3)
                             Text("Example")
                                 .font(.title2)
-                                .fontWeight(.bold)
+                                .fontWeight(.semibold)
+                            Spacer()
                         }
+                        .padding(.horizontal, 20)
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("If you map: a→e, b→x, c→z")
-                                .font(.body)
-                            Text("Then 'Hello' becomes 'eexxa' and 'HELLO' becomes 'EEXXA'")
-                                .font(.body)
-                            Text("Both uppercase and lowercase letters use the same mapping")
-                                .font(.body)
-                            Text("Your friend imports your language and can decrypt both cases")
-                                .font(.body)
+                        VStack(spacing: 16) {
+                            ExampleCard(
+                                title: "Simple Mapping",
+                                mapping: "H→C, E→A, Y→T",
+                                original: "HEY",
+                                encrypted: "CAT"
+                            )
+                            .padding(.horizontal, 20)
+                            
+                            ExampleCard(
+                                title: "Emojis, Symbols, and Numbers",
+                                mapping: "A→🔥, A→4, R→$, O→E, N→♠",
+                                original: "AARON",
+                                encrypted: "🔥4$E♠"
+                            )
+                            .padding(.horizontal, 20)
                         }
                     }
-                    .padding()
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(12)
                     
-                    Spacer(minLength: 20)
+                    Spacer(minLength: 40)
                 }
-                .padding()
             }
-            .navigationTitle("How To Use Oobada")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarHidden(true)
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+}
+
+// MARK: - Step Card Component
+struct StepCard: View {
+    let stepNumber: Int
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let description: String
+    let isExpanded: Bool
+    let steps: [String]
+    let onTap: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: onTap) {
+                HStack(spacing: 16) {
+                    // Step number badge
+                    ZStack {
+                        Circle()
+                            .fill(iconColor.opacity(0.15))
+                            .frame(width: 50, height: 50)
+                        
+                        VStack(spacing: 2) {
+                            Image(systemName: icon)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(iconColor)
+                            
+                            Text("\(stepNumber)")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundColor(iconColor)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                        
+                        Text(description)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                .padding(20)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider()
+                        .padding(.horizontal, 20)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                            HStack(alignment: .top, spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(iconColor.opacity(0.2))
+                                        .frame(width: 24, height: 24)
+                                    
+                                    Text("\(index + 1)")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(iconColor)
+                                }
+                                
+                                Text(step)
+                                    .font(.body)
+                                    .foregroundColor(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                
+                                Spacer()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(iconColor.opacity(0.2), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - Pro Tip Row
+struct ProTipRow: View {
+    let icon: String
+    let tip: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.purple)
+                .frame(width: 20)
+            
+            Text(tip)
+                .font(.body)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            Spacer()
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Example Card
+struct ExampleCard: View {
+    let title: String
+    let mapping: String
+    let original: String
+    let encrypted: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .fontWeight(.semibold)
+            
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Mapping:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    Text(mapping)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .foregroundColor(.purple)
+                    Spacer()
+                }
+                
+                HStack {
+                    Text("Original:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    Text(original)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(6)
+                    Spacer()
+                }
+                
+                HStack {
+                    Text("Encrypted:")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    Text(encrypted)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(6)
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+        )
     }
 }
 
@@ -1716,6 +2011,7 @@ struct TipRow: View {
         }
     }
 }
+
 struct SettingsView: View {
     @EnvironmentObject var premiumManager: PremiumManager
     @EnvironmentObject var themeManager: ThemeManager
