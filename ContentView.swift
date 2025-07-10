@@ -375,6 +375,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SwitchToLanguagesTab"))) { _ in
             selectedTab = 1
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SwitchToTranslateTab"))) { _ in
+            selectedTab = 0
+        }
         .sheet(isPresented: $premiumManager.showPaywall) {
             PaywallView()
         }
@@ -422,7 +425,8 @@ struct ContentView: View {
 struct TranslateView: View {
     @EnvironmentObject var languageManager: LanguageManager
     @EnvironmentObject var premiumManager: PremiumManager
-    @State private var inputText = ""
+    @State private var encryptInputText = ""
+    @State private var decryptInputText = ""
     @State private var translatedText = ""
     @State private var showCopiedAlert = false
     @State private var showMessageComposer = false
@@ -434,6 +438,10 @@ struct TranslateView: View {
     
     var accessibleLanguages: [CustomLanguage] {
         languageManager.getAccessibleLanguages(isPremium: premiumManager.isPremium)
+    }
+    
+    var currentInputText: String {
+        isDecryptMode ? decryptInputText : encryptInputText
     }
     
     var body: some View {
@@ -485,9 +493,13 @@ struct TranslateView: View {
                         
                         // Clear button and character count
                         HStack(spacing: 8) {
-                            if !inputText.isEmpty {
+                            if !currentInputText.isEmpty {
                                 Button("Clear") {
-                                    inputText = ""
+                                    if isDecryptMode {
+                                        decryptInputText = ""
+                                    } else {
+                                        encryptInputText = ""
+                                    }
                                     updateTranslation()
                                 }
                                 .font(.caption)
@@ -495,14 +507,14 @@ struct TranslateView: View {
                             }
                             
                             if !premiumManager.isPremium {
-                                Text("\(inputText.count)/\(freeCharacterLimit)")
+                                Text("\(currentInputText.count)/\(freeCharacterLimit)")
                                     .font(.caption)
-                                    .foregroundColor(inputText.count > freeCharacterLimit ? .red : .gray)
+                                    .foregroundColor(currentInputText.count > freeCharacterLimit ? .red : .gray)
                             }
                         }
                     }
                     
-                    TextEditor(text: $inputText)
+                    TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
                         .frame(minHeight: 100)
                         .padding(8)
                         .background(Color.gray.opacity(0.1))
@@ -510,7 +522,7 @@ struct TranslateView: View {
                         .overlay(
                             // Placeholder text
                             Group {
-                                if inputText.isEmpty {
+                                if currentInputText.isEmpty {
                                     Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
                                         .foregroundColor(.gray)
                                         .padding(.horizontal, 12)
@@ -520,11 +532,21 @@ struct TranslateView: View {
                                 }
                             }
                         )
-                        .onChange(of: inputText) {
-                            if !premiumManager.isPremium && inputText.count > freeCharacterLimit {
-                                inputText = String(inputText.prefix(freeCharacterLimit))
+                        .onChange(of: encryptInputText) {
+                            if !isDecryptMode {
+                                if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
+                                    encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
+                                }
+                                updateTranslation()
                             }
-                            updateTranslation()
+                        }
+                        .onChange(of: decryptInputText) {
+                            if isDecryptMode {
+                                if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
+                                    decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
+                                }
+                                updateTranslation()
+                            }
                         }
                 }
                 .padding(.horizontal)
@@ -632,6 +654,8 @@ struct TranslateView: View {
             translatedText = ""
             return
         }
+        
+        let inputText = currentInputText
         
         if isDecryptMode {
             translatedText = languageManager.decrypt(text: inputText, using: language)
@@ -805,11 +829,19 @@ struct CreateLanguageView: View {
                     HStack {
                         Text("Letter Mappings")
                         Spacer()
-                        Button("Generate for Me") {
-                            showGenerateOptions = true
+                        HStack(spacing: 8) {
+                            Button("Clear All") {
+                                letterMappings.removeAll()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            
+                            Button("Generate for Me") {
+                                showGenerateOptions = true
+                            }
+                            .font(.caption)
+                            .foregroundColor(.purple)
                         }
-                        .font(.caption)
-                        .foregroundColor(.purple)
                     }
                 ) {
                     ForEach(Array(alphabet), id: \.self) { letter in
@@ -848,7 +880,15 @@ struct CreateLanguageView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
+                        // Clear all mappings
+                        languageName = ""
+                        letterMappings.removeAll()
+                        
+                        // Dismiss the create view
                         presentationMode.wrappedValue.dismiss()
+                        
+                        // Switch to Translate tab
+                        NotificationCenter.default.post(name: NSNotification.Name("SwitchToTranslateTab"), object: nil)
                     }
                 }
                 
@@ -878,7 +918,7 @@ struct CreateLanguageView: View {
                         .default(Text("🔀 Shuffled Letters")) {
                             generateShuffledLetters()
                         },
-                        .default(Text("🔢 Numbers")) {
+                        .default(Text("🔢 Letters & Numbers")) {
                             generateNumbers()
                         },
                         .default(Text("😀 Emojis")) {
@@ -951,49 +991,144 @@ struct CreateLanguageView: View {
     
     // MARK: - Generation Functions
     private func generateShuffledLetters() {
-        let shuffledAlphabet = Array(alphabet).shuffled()
         letterMappings.removeAll()
         
-        for (index, letter) in alphabet.enumerated() {
-            letterMappings[letter] = String(shuffledAlphabet[index]).uppercased()
+        let vowels = ["a", "e", "i", "o", "u"]
+        let consonants = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "x", "y", "z"]
+        
+        // Create derangements (no letter maps to itself)
+        let vowelMappings = createDerangement(from: vowels)
+        let consonantMappings = createDerangement(from: consonants)
+        
+        for letter in alphabet {
+            if vowels.contains(String(letter)) {
+                // Map vowels to deranged vowels
+                let vowelIndex = vowels.firstIndex(of: String(letter))!
+                letterMappings[letter] = vowelMappings[vowelIndex].uppercased()
+            } else {
+                // Map consonants to deranged consonants
+                let consonantIndex = consonants.firstIndex(of: String(letter))!
+                letterMappings[letter] = consonantMappings[consonantIndex].uppercased()
+            }
         }
     }
     
     private func generateNumbers() {
         letterMappings.removeAll()
         
-        // Create 26 unique number combinations
-        var numbers: [String] = []
+        // Separate vowels and consonants for mapping
+        let vowels = ["a", "e", "i", "o", "u"]
+        let consonants = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "x", "y", "z"]
         
-        // Single digits 0-9 (10 numbers)
+        // Vowels map to different vowels (no self-mapping)
+        let vowelCipherLetters = ["A", "E", "I", "O", "U"]
+        let vowelMappings = createDerangement(from: vowelCipherLetters)
+        
+        // Consonants map to letters Q-Z + numbers 0-9 (10 letters + 10 numbers = 20 characters)
+        // Note: Using Q-Z to avoid overlap with vowel mappings A-P
+        var consonantPool: [String] = []
+        
+        // Letters Q-Z (10 letters) - avoiding overlap with vowels A,E,I,O,U
+        for i in 81...90 { // Q through Z
+            consonantPool.append(String(Character(UnicodeScalar(i)!)))
+        }
+        
+        // Numbers 0-9 (10 numbers)
         for i in 0...9 {
-            numbers.append(String(i))
+            consonantPool.append(String(i))
         }
         
-        // Two-digit numbers 10-25 (16 more numbers)
-        for i in 10...25 {
-            numbers.append(String(i))
-        }
+        // We have 21 consonants but only 20 pool characters
+        // Add one more letter from the remaining letters (P is safe since vowels use A,E,I,O,U)
+        consonantPool.append("P")
         
-        // Shuffle to randomize assignment
-        numbers.shuffle()
+        // Shuffle consonant pool (no self-mapping possible since consonants don't map to letters)
+        let shuffledConsonantPool = consonantPool.shuffled()
         
-        for (index, letter) in alphabet.enumerated() {
-            letterMappings[letter] = numbers[index]
+        for letter in alphabet {
+            if vowels.contains(String(letter)) {
+                // Map vowels to deranged vowel letters
+                let vowelIndex = vowels.firstIndex(of: String(letter))!
+                letterMappings[letter] = vowelMappings[vowelIndex]
+            } else {
+                // Map consonants to shuffled alphanumeric characters
+                let consonantIndex = consonants.firstIndex(of: String(letter))!
+                letterMappings[letter] = shuffledConsonantPool[consonantIndex]
+            }
         }
     }
     
+    // Create a derangement (permutation where no element appears in its original position)
+    private func createDerangement(from array: [String]) -> [String] {
+        var result = array.shuffled()
+        var attempts = 0
+        let maxAttempts = 100
+        
+        // Keep shuffling until no element is in its original position
+        while hasFixedPoints(original: array, permutation: result) && attempts < maxAttempts {
+            result = array.shuffled()
+            attempts += 1
+        }
+        
+        // If we can't find a perfect derangement, manually fix any remaining fixed points
+        if hasFixedPoints(original: array, permutation: result) {
+            result = fixFixedPoints(original: array, permutation: result)
+        }
+        
+        return result
+    }
+    
+    // Check if any element is in its original position
+    private func hasFixedPoints(original: [String], permutation: [String]) -> Bool {
+        for i in 0..<original.count {
+            if original[i] == permutation[i] {
+                return true
+            }
+        }
+        return false
+    }
+    
+    // Fix any remaining fixed points by swapping
+    private func fixFixedPoints(original: [String], permutation: [String]) -> [String] {
+        var result = permutation
+        
+        for i in 0..<original.count {
+            if original[i] == result[i] {
+                // Find another position to swap with
+                for j in 0..<result.count {
+                    if i != j && original[j] != result[i] && original[i] != result[j] {
+                        // Swap positions i and j
+                        let temp = result[i]
+                        result[i] = result[j]
+                        result[j] = temp
+                        break
+                    }
+                }
+            }
+        }
+        
+        return result
+    }
+    
     private func generateEmojis() {
+        // Carefully curated collections with exactly 26 unique emojis each
         let emojiCollections = [
+            // Faces - 26 unique face emojis
             ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "☺️", "😋", "😛", "😝", "😜", "🤪"],
+            // Animals - 26 unique animal emojis
             ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺"],
-            ["🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥒", "🌶️", "🌽", "🥕", "🥔", "🍠", "🥖", "🥨"],
-            ["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🎱", "🏓", "🏸", "🏑", "🏒", "🥍", "🏏", "⛳", "🏹", "🎣", "🥊", "🥋", "🎽", "⛷️", "🏂", "🏄", "🚣", "🏊", "⛹️"],
-            ["🌟", "⭐", "✨", "💫", "⚡", "🔥", "💥", "💢", "💨", "💤", "💦", "💧", "🌈", "☀️", "🌤️", "⛅", "🌦️", "🌧️", "⛈️", "🌩️", "🌨️", "❄️", "☃️", "⛄", "🌬️", "💨"]
+            // Food - 26 unique food emojis
+            ["🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🫐", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥒", "🌶️", "🌽", "🥕", "🧄", "🧅", "🥔"],
+            // Sports - 26 unique sport/activity emojis
+            ["⚽", "🏀", "🏈", "⚾", "🥎", "🎾", "🏐", "🏉", "🎱", "🪀", "🏓", "🏸", "🏑", "🏒", "🥍", "🏏", "🪃", "🥅", "⛳", "🪁", "🏹", "🎣", "🤿", "🥊", "🥋", "🎽"],
+            // Objects - 26 unique object emojis
+            ["⌚", "📱", "💻", "⌨️", "🖥️", "🖨️", "🖱️", "🖲️", "🕹️", "💽", "💾", "💿", "📀", "📼", "📷", "📸", "📹", "🎥", "📽️", "🎞️", "📞", "☎️", "📟", "📠", "📺", "📻"]
         ]
         
-        // Pick a random collection and shuffle it
+        // Pick a random collection (all guaranteed to have exactly 26 unique emojis)
         let selectedCollection = emojiCollections.randomElement() ?? emojiCollections[0]
+        
+        // Shuffle the selected collection
         let shuffledEmojis = selectedCollection.shuffled()
         
         letterMappings.removeAll()
@@ -1004,11 +1139,13 @@ struct CreateLanguageView: View {
     }
     
     private func generateSymbols() {
+        // Exactly 26 unique symbols - carefully selected to avoid duplicates
         let symbols = [
             "★", "☆", "♦", "♠", "♥", "♣", "◆", "◇", "◈", "○", "●", "◯", "◉", "△", "▲", "▽", "▼",
             "□", "■", "◦", "‣", "⁂", "※", "‼", "⁇", "⁈"
         ]
         
+        // Verify we have exactly 26 symbols, then shuffle
         let shuffledSymbols = symbols.shuffled()
         letterMappings.removeAll()
         
@@ -1018,12 +1155,15 @@ struct CreateLanguageView: View {
     }
     
     private func generateMixedStyle() {
-        let letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
-        let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
-        let symbols = ["★", "♦", "♠", "♥", "◆", "●"]
-        let emojis = ["😊", "🔥", "⭐", "💎"]
+        // Create a pool of diverse characters
+        let letters = ["A", "B", "C", "D", "E", "F"]  // 6 letters
+        let numbers = ["0", "1", "2", "3", "4", "5"]  // 6 numbers
+        let symbols = ["★", "♦", "♠", "♥", "◆", "●", "▲", "■", "◦", "△", "◇", "◈", "○", "□"]  // 14 symbols
         
-        let allCharacters = letters + numbers + symbols + emojis
+        // Combine all (6 + 6 + 14 = 26 unique characters)
+        let allCharacters = letters + numbers + symbols
+        
+        // Shuffle the combined pool
         let shuffledMix = allCharacters.shuffled()
         letterMappings.removeAll()
         
@@ -1076,11 +1216,19 @@ struct LanguageDetailView: View {
                     Text("Letter Mappings")
                     Spacer()
                     if isEditing {
-                        Button("Generate for Me") {
-                            showGenerateOptions = true
+                        HStack(spacing: 8) {
+                            Button("Clear All") {
+                                tempMappings.removeAll()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            
+                            Button("Generate for Me") {
+                                showGenerateOptions = true
+                            }
+                            .font(.caption)
+                            .foregroundColor(.purple)
                         }
-                        .font(.caption)
-                        .foregroundColor(.purple)
                     }
                 }
             ) {
@@ -1288,24 +1436,25 @@ struct LanguageDetailView: View {
     private func generateNumbers() {
         tempMappings.removeAll()
         
-        // Create 26 unique number combinations
-        var numbers: [String] = []
+        // Create 26 unique alphanumeric combinations
+        var alphanumeric: [String] = []
         
-        // Single digits 0-9 (10 numbers)
+        // Letters A-P (16 letters)
+        for i in 65...80 {
+            alphanumeric.append(String(Character(UnicodeScalar(i)!)))
+        }
+        
+        // Numbers 0-9 (10 numbers)
         for i in 0...9 {
-            numbers.append(String(i))
+            alphanumeric.append(String(i))
         }
         
-        // Two-digit numbers 10-25 (16 more numbers)
-        for i in 10...25 {
-            numbers.append(String(i))
-        }
-        
+        // Total: 16 letters + 10 numbers = 26 unique characters
         // Shuffle to randomize assignment
-        numbers.shuffle()
+        alphanumeric.shuffle()
         
         for (index, letter) in alphabet.enumerated() {
-            tempMappings[letter] = numbers[index]
+            tempMappings[letter] = alphanumeric[index]
         }
     }
     
