@@ -371,7 +371,7 @@ struct ContentView: View {
                     }
                     .tag(4)
             }
-            .accentColor(.purple)
+            .accentColor(.teal) // Changed from .purple
             .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
         }
         .onAppear {
@@ -400,10 +400,10 @@ struct ContentView: View {
         // Add subtle shadow
         tabBarAppearance.shadowColor = UIColor.black.withAlphaComponent(0.3)
         
-        // Selected item color - bright white for contrast
-        tabBarAppearance.stackedLayoutAppearance.selected.iconColor = UIColor.systemPurple
+        // Selected item color - bright teal for contrast
+        tabBarAppearance.stackedLayoutAppearance.selected.iconColor = UIColor.systemTeal // Changed from UIColor.systemPurple
         tabBarAppearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-            .foregroundColor: UIColor.systemPurple
+            .foregroundColor: UIColor.systemTeal // Changed from UIColor.systemPurple
         ]
         
         // Normal item color - light gray for contrast against dark background
@@ -620,7 +620,7 @@ struct TranslateView: View {
                         .fontWeight(.bold)
                         .foregroundStyle(
                             LinearGradient(
-                                gradient: Gradient(colors: [.purple, .blue]),
+                                gradient: Gradient(colors: [.teal, .green]), // Changed from [.purple, .blue]
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -738,7 +738,7 @@ struct LanguageListView: View {
                                             .foregroundColor(.gray)
                                         Spacer()
                                         Image(systemName: "lock.fill")
-                                            .foregroundColor(.purple)
+                                            .foregroundColor(.teal) // Changed from .purple
                                             .font(.caption)
                                     }
                                     Text("\(language.mapping.count) letters mapped • Premium Required")
@@ -756,7 +756,7 @@ struct LanguageListView: View {
                     Button("Create More Languages") {
                         premiumManager.showPaywall = true
                     }
-                    .foregroundColor(.purple)
+                    .foregroundColor(.teal) // Changed from .purple
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
@@ -856,7 +856,7 @@ struct CreateLanguageView: View {
                                 showGenerateOptions = true
                             }
                             .font(.caption)
-                            .foregroundColor(.purple)
+                            .foregroundColor(.teal) // Changed from .purple
                         }
                     }
                 ) {
@@ -921,7 +921,7 @@ struct CreateLanguageView: View {
                         Button("Done") {
                             hideKeyboard()
                         }
-                        .foregroundColor(.purple)
+                        .foregroundColor(.teal) // Changed from .purple
                         .fontWeight(.medium)
                     }
                 }
@@ -1243,7 +1243,7 @@ struct LanguageDetailView: View {
                                 showGenerateOptions = true
                             }
                             .font(.caption)
-                            .foregroundColor(.purple)
+                            .foregroundColor(.teal) // Changed from .purple
                         }
                     }
                 }
@@ -1324,7 +1324,7 @@ struct LanguageDetailView: View {
                         Button("Done") {
                             hideKeyboard()
                         }
-                        .foregroundColor(.purple)
+                        .foregroundColor(.teal) // Changed from .purple
                         .fontWeight(.medium)
                     }
                 }
@@ -1538,7 +1538,7 @@ struct HowToView: View {
                         ZStack {
                             Circle()
                                 .fill(LinearGradient(
-                                    gradient: Gradient(colors: [.purple.opacity(0.8), .blue.opacity(0.6)]),
+                                    gradient: Gradient(colors: [.teal.opacity(0.8), .green.opacity(0.6)]), // Changed from [.purple.opacity(0.8), .blue.opacity(0.6)]
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ))
@@ -1599,7 +1599,7 @@ struct HowToView: View {
                             StepCard(
                                 stepNumber: 2,
                                 icon: "square.and.arrow.up.fill",
-                                iconColor: .purple,
+                                iconColor: .teal, // Changed from .purple
                                 title: "Share Language Key",
                                 description: "Let friends decrypt your messages",
                                 isExpanded: selectedStep == 2,
@@ -1862,7 +1862,7 @@ struct ProTipRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(.purple)
+                .foregroundColor(.teal) // Changed from .purple
                 .frame(width: 20)
             
             Text(tip)
@@ -1897,7 +1897,7 @@ struct ExampleCard: View {
                         .foregroundColor(.secondary)
                     Text(mapping)
                         .font(.system(.subheadline, design: .monospaced))
-                        .foregroundColor(.purple)
+                        .foregroundColor(.teal) // Changed from .purple
                     Spacer()
                 }
                 
@@ -2036,7 +2036,7 @@ struct SettingsView: View {
                         Button("Upgrade to Premium") {
                             premiumManager.showPaywall = true
                         }
-                        .foregroundColor(.purple)
+                        .foregroundColor(.teal) // Changed from .purple
                         
                         Button("Enable Premium (Testing)") {
                             premiumManager.isPremium = true
@@ -2066,6 +2066,7 @@ struct SettingsView: View {
         .navigationViewStyle(StackNavigationViewStyle())
     }
 }
+
 
 // MARK: - Paywall View
 struct PaywallView: View {
@@ -2139,7 +2140,7 @@ struct FeatureRow: View {
         HStack(spacing: 15) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundColor(.purple)
+                .foregroundColor(.teal) // Changed from .purple
                 .frame(width: 30)
             
             VStack(alignment: .leading, spacing: 2) {
@@ -2164,7 +2165,7 @@ struct PremiumButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity)
             .background(
                 LinearGradient(
-                    gradient: Gradient(colors: [.purple, .blue]),
+                    gradient: Gradient(colors: [.teal, .green]), // Changed from [.purple, .blue]
                     startPoint: .leading,
                     endPoint: .trailing
                 )
