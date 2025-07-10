@@ -309,13 +309,22 @@ class PremiumManager: ObservableObject {
 
 // MARK: - Theme Manager
 class ThemeManager: ObservableObject {
-    @Published var isDarkMode: Bool = false
+    @Published var isDarkMode: Bool = true // Changed from false to true
     
     private let userDefaults = UserDefaults.standard
     private let darkModeKey = "DarkModeEnabled"
     
     init() {
-        isDarkMode = userDefaults.bool(forKey: darkModeKey)
+        // Check if user has previously set a preference
+        if userDefaults.object(forKey: darkModeKey) != nil {
+            // User has a saved preference, use it
+            isDarkMode = userDefaults.bool(forKey: darkModeKey)
+        } else {
+            // No saved preference, default to dark mode
+            isDarkMode = true
+            // Save the default preference
+            saveDarkModePreference()
+        }
     }
     
     func saveDarkModePreference() {
@@ -772,7 +781,7 @@ struct LanguageListView: View {
                                             .foregroundColor(.gray)
                                         Spacer()
                                         Image(systemName: "lock.fill")
-                                            .foregroundColor(.teal) // Changed from .purple
+                                            .foregroundColor(.teal)
                                             .font(.caption)
                                     }
                                     Text("\(language.mapping.count) letters mapped • Premium Required")
@@ -790,12 +799,26 @@ struct LanguageListView: View {
                     Button("Create More Languages") {
                         premiumManager.showPaywall = true
                     }
-                    .foregroundColor(.teal) // Changed from .purple
+                    .foregroundColor(.teal)
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
-            .navigationTitle("My Languages")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("My Languages")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.teal, .green]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+                
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Import") {
                         showImportAlert = true
@@ -890,7 +913,7 @@ struct CreateLanguageView: View {
                                 showGenerateOptions = true
                             }
                             .font(.caption)
-                            .foregroundColor(.teal) // Changed from .purple
+                            .foregroundColor(.teal)
                         }
                     }
                 ) {
@@ -925,9 +948,22 @@ struct CreateLanguageView: View {
                 }
                 .listRowBackground(Color.clear)
             }
-            .navigationTitle("Create Language")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Create Language")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.teal, .green]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+                
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
                         // Clear all mappings
@@ -955,7 +991,7 @@ struct CreateLanguageView: View {
                         Button("Done") {
                             hideKeyboard()
                         }
-                        .foregroundColor(.teal) // Changed from .purple
+                        .foregroundColor(.teal)
                         .fontWeight(.medium)
                     }
                 }
@@ -2070,7 +2106,7 @@ struct SettingsView: View {
                         Button("Upgrade to Premium") {
                             premiumManager.showPaywall = true
                         }
-                        .foregroundColor(.teal) // Changed from .purple
+                        .foregroundColor(.teal)
                         
                         Button("Enable Premium (Testing)") {
                             premiumManager.isPremium = true
@@ -2095,7 +2131,22 @@ struct SettingsView: View {
                     Link("Terms of Service", destination: URL(string: "https://example.com/terms")!)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Settings")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.teal, .green]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
