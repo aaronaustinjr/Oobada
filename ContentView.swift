@@ -447,207 +447,195 @@ struct TranslateView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Custom Dark Header
-            ZStack {
-                darkHeaderBackground
-                    .ignoresSafeArea(edges: .top)
+        NavigationView {
+            VStack(spacing: 20) {
+                // Language Selector
+                if !accessibleLanguages.isEmpty {
+                    Picker("Select Language", selection: $languageManager.selectedLanguage) {
+                        ForEach(accessibleLanguages) { language in
+                            Text(language.name).tag(language as CustomLanguage?)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .padding(.horizontal)
+                    .onChange(of: languageManager.selectedLanguage) {
+                        // Ensure selected language is accessible
+                        if let selected = languageManager.selectedLanguage,
+                           !languageManager.isLanguageAccessible(selected, isPremium: premiumManager.isPremium) {
+                            languageManager.selectedLanguage = accessibleLanguages.first
+                        }
+                    }
+                }
                 
-                HStack {
+                // Mode Toggle
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Mode")
+                            .font(.headline)
+                        Spacer()
+                    }
+                    
+                    Picker("Translation Mode", selection: $isDecryptMode) {
+                        Text("🔒 Encrypt").tag(false)
+                        Text("🔓 Decrypt").tag(true)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .onChange(of: isDecryptMode) {
+                        updateTranslation()
+                    }
+                }
+                .padding(.horizontal)
+                
+                // Input Section
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(isDecryptMode ? "Encrypted Text" : "Original Text")
+                            .font(.headline)
+                        Spacer()
+                        
+                        // Clear button and character count
+                        HStack(spacing: 8) {
+                            if !currentInputText.isEmpty {
+                                Button("Clear") {
+                                    if isDecryptMode {
+                                        decryptInputText = ""
+                                    } else {
+                                        encryptInputText = ""
+                                    }
+                                    updateTranslation()
+                                }
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            }
+                            
+                            if !premiumManager.isPremium {
+                                Text("\(currentInputText.count)/\(freeCharacterLimit)")
+                                    .font(.caption)
+                                    .foregroundColor(currentInputText.count > freeCharacterLimit ? .red : .gray)
+                            }
+                        }
+                    }
+                    
+                    TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
+                        .frame(minHeight: 100)
+                        .padding(8)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(8)
+                        .overlay(
+                            // Placeholder text
+                            Group {
+                                if currentInputText.isEmpty {
+                                    Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
+                                        .foregroundColor(.gray)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 16)
+                                        .allowsHitTesting(false)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                }
+                            }
+                        )
+                        .onChange(of: encryptInputText) {
+                            if !isDecryptMode {
+                                if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
+                                    encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
+                                }
+                                updateTranslation()
+                            }
+                        }
+                        .onChange(of: decryptInputText) {
+                            if isDecryptMode {
+                                if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
+                                    decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
+                                }
+                                updateTranslation()
+                            }
+                        }
+                }
+                .padding(.horizontal)
+                
+                // Translation Section
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(isDecryptMode ? "Decrypted Text" : "Translated Text")
+                            .font(.headline)
+                        Spacer()
+                        
+                        // Action buttons
+                        HStack(spacing: 12) {
+                            if premiumManager.isPremium && !translatedText.isEmpty && MFMessageComposeViewController.canSendText() {
+                                Button("Send SMS") {
+                                    showMessageComposer = true
+                                }
+                                .font(.caption)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.green)
+                                .cornerRadius(6)
+                            }
+                            
+                            Button("Copy") {
+                                UIPasteboard.general.string = translatedText
+                                showCopiedAlert = true
+                            }
+                            .disabled(translatedText.isEmpty)
+                        }
+                    }
+                    
+                    ScrollView {
+                        Text(translatedText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                            .background(isDecryptMode ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                            .cornerRadius(8)
+                            .textSelection(.enabled)
+                    }
+                    .frame(minHeight: 100)
+                }
+                .padding(.horizontal)
+                
+                // Premium Prompt
+                if !premiumManager.isPremium {
+                    VStack(spacing: 8) {
+                        Text("Want longer messages, unlimited languages, and SMS sending?")
+                            .font(.subheadline)
+                            .multilineTextAlignment(.center)
+                        
+                        Button("Upgrade to Premium") {
+                            premiumManager.showPaywall = true
+                        }
+                        .buttonStyle(PremiumButtonStyle())
+                    }
+                    .padding(.horizontal)
+                }
+                
+                Spacer()
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
                     Text("Oobada")
-                        .font(.largeTitle)
+                        .font(.title2)
                         .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
+                        .foregroundStyle(
+                            LinearGradient(
+                                gradient: Gradient(colors: [.purple, .blue]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         hideKeyboard()
                     }
-                    .foregroundColor(.white)
                     .opacity(isKeyboardVisible ? 1 : 0)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 10)
-                .padding(.bottom, 15)
-            }
-            
-            // Main Content
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Language Selector
-                    if !accessibleLanguages.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Select Language")
-                                    .font(.headline)
-                                Spacer()
-                            }
-                            
-                            Picker("Select Language", selection: $languageManager.selectedLanguage) {
-                                ForEach(accessibleLanguages) { language in
-                                    Text(language.name).tag(language as CustomLanguage?)
-                                }
-                            }
-                            .pickerStyle(MenuPickerStyle())
-                            .onChange(of: languageManager.selectedLanguage) {
-                                // Ensure selected language is accessible
-                                if let selected = languageManager.selectedLanguage,
-                                   !languageManager.isLanguageAccessible(selected, isPremium: premiumManager.isPremium) {
-                                    languageManager.selectedLanguage = accessibleLanguages.first
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                    }
-                    
-                    // Mode Toggle
-                    VStack(spacing: 8) {
-                        HStack {
-                            Text("Mode")
-                                .font(.headline)
-                            Spacer()
-                        }
-                        
-                        Picker("Translation Mode", selection: $isDecryptMode) {
-                            Text("🔒 Encrypt").tag(false)
-                            Text("🔓 Decrypt").tag(true)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .onChange(of: isDecryptMode) {
-                            updateTranslation()
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    
-                    // Input Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(isDecryptMode ? "Encrypted Text" : "Original Text")
-                                .font(.headline)
-                            Spacer()
-                            
-                            // Clear button and character count
-                            HStack(spacing: 8) {
-                                if !currentInputText.isEmpty {
-                                    Button("Clear") {
-                                        if isDecryptMode {
-                                            decryptInputText = ""
-                                        } else {
-                                            encryptInputText = ""
-                                        }
-                                        updateTranslation()
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                                }
-                                
-                                if !premiumManager.isPremium {
-                                    Text("\(currentInputText.count)/\(freeCharacterLimit)")
-                                        .font(.caption)
-                                        .foregroundColor(currentInputText.count > freeCharacterLimit ? .red : .gray)
-                                }
-                            }
-                        }
-                        
-                        TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
-                            .frame(minHeight: 100)
-                            .padding(8)
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(8)
-                            .overlay(
-                                // Placeholder text
-                                Group {
-                                    if currentInputText.isEmpty {
-                                        Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
-                                            .foregroundColor(.gray)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 16)
-                                            .allowsHitTesting(false)
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                    }
-                                }
-                            )
-                            .onChange(of: encryptInputText) {
-                                if !isDecryptMode {
-                                    if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
-                                        encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
-                                    }
-                                    updateTranslation()
-                                }
-                            }
-                            .onChange(of: decryptInputText) {
-                                if isDecryptMode {
-                                    if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
-                                        decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
-                                    }
-                                    updateTranslation()
-                                }
-                            }
-                    }
-                    .padding(.horizontal, 20)
-                    
-                    // Translation Section
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(isDecryptMode ? "Decrypted Text" : "Translated Text")
-                                .font(.headline)
-                            Spacer()
-                            
-                            // Action buttons
-                            HStack(spacing: 12) {
-                                if premiumManager.isPremium && !translatedText.isEmpty && MFMessageComposeViewController.canSendText() {
-                                    Button("Send SMS") {
-                                        showMessageComposer = true
-                                    }
-                                    .font(.caption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.green)
-                                    .cornerRadius(6)
-                                }
-                                
-                                Button("Copy") {
-                                    UIPasteboard.general.string = translatedText
-                                    showCopiedAlert = true
-                                }
-                                .disabled(translatedText.isEmpty)
-                            }
-                        }
-                        
-                        ScrollView {
-                            Text(translatedText)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                                .background(isDecryptMode ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
-                                .cornerRadius(8)
-                                .textSelection(.enabled)
-                        }
-                        .frame(minHeight: 100)
-                    }
-                    .padding(.horizontal, 20)
-                    
-                    // Premium Prompt
-                    if !premiumManager.isPremium {
-                        VStack(spacing: 8) {
-                            Text("Want longer messages, unlimited languages, and SMS sending?")
-                                .font(.subheadline)
-                                .multilineTextAlignment(.center)
-                            
-                            Button("Upgrade to Premium") {
-                                premiumManager.showPaywall = true
-                            }
-                            .buttonStyle(PremiumButtonStyle())
-                        }
-                        .padding(.horizontal, 20)
-                    }
-                    
-                    Spacer(minLength: 40)
                 }
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
         .background(Color.clear) // Let the sky blue background show through
         .alert("Copied!", isPresented: $showCopiedAlert) {
             Button("OK") { }
