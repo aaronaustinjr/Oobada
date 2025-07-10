@@ -156,6 +156,68 @@ class LanguageManager: ObservableObject {
         return result
     }
     
+    func decrypt(text: String, using language: CustomLanguage) -> String {
+        var result = ""
+        let reverseMapping = createReverseMapping(from: language.mapping)
+        
+        var i = text.startIndex
+        while i < text.endIndex {
+            var found = false
+            
+            // Try to find the longest matching cipher text
+            for length in stride(from: 3, through: 1, by: -1) {
+                let endIndex = text.index(i, offsetBy: length, limitedBy: text.endIndex) ?? text.endIndex
+                let substring = String(text[i..<endIndex])
+                
+                if let originalChar = reverseMapping[substring] {
+                    result += originalChar
+                    i = endIndex
+                    found = true
+                    break
+                }
+            }
+            
+            if !found {
+                result += String(text[i])
+                i = text.index(after: i)
+            }
+        }
+        
+        return result
+    }
+    
+    private func createReverseMapping(from mapping: [Character: String]) -> [String: String] {
+        var reverseMapping: [String: String] = [:]
+        for (key, value) in mapping {
+            reverseMapping[value] = String(key)
+        }
+        return reverseMapping
+    }
+    
+    func exportLanguage(_ language: CustomLanguage) -> String {
+        guard let data = try? JSONEncoder().encode(language),
+              let jsonString = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return jsonString.data(using: .utf8)?.base64EncodedString() ?? ""
+    }
+    
+    func importLanguage(from encodedString: String) -> CustomLanguage? {
+        guard let data = Data(base64Encoded: encodedString),
+              let jsonString = String(data: data, encoding: .utf8),
+              let jsonData = jsonString.data(using: .utf8),
+              let language = try? JSONDecoder().decode(CustomLanguage.self, from: jsonData) else {
+            return nil
+        }
+        
+        // Check if language already exists
+        if languages.contains(where: { $0.name == language.name }) {
+            return nil // Language with same name already exists
+        }
+        
+        return language
+    }
+    
     private func saveLanguages() {
         if let encoded = try? JSONEncoder().encode(languages) {
             userDefaults.set(encoded, forKey: languagesKey)
@@ -299,6 +361,7 @@ struct TranslateView: View {
     @State private var showMessageComposer = false
     @State private var showMessageResult = false
     @State private var messageResultText = ""
+    @State private var isDecryptMode = false
     
     private let freeCharacterLimit = 100
     
@@ -316,16 +379,48 @@ struct TranslateView: View {
                     .padding(.horizontal)
                 }
                 
+                // Mode Toggle
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Mode")
+                            .font(.headline)
+                        Spacer()
+                    }
+                    
+                    Picker("Translation Mode", selection: $isDecryptMode) {
+                        Text("🔒 Encrypt").tag(false)
+                        Text("🔓 Decrypt").tag(true)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .onChange(of: isDecryptMode) {
+                        updateTranslation()
+                    }
+                }
+                .padding(.horizontal)
+                
                 // Input Section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Original Text")
+                        Text(isDecryptMode ? "Encrypted Text" : "Original Text")
                             .font(.headline)
                         Spacer()
-                        if !premiumManager.isPremium {
-                            Text("\(inputText.count)/\(freeCharacterLimit)")
+                        
+                        // Clear button and character count
+                        HStack(spacing: 8) {
+                            if !inputText.isEmpty {
+                                Button("Clear") {
+                                    inputText = ""
+                                    updateTranslation()
+                                }
                                 .font(.caption)
-                                .foregroundColor(inputText.count > freeCharacterLimit ? .red : .gray)
+                                .foregroundColor(.red)
+                            }
+                            
+                            if !premiumManager.isPremium {
+                                Text("\(inputText.count)/\(freeCharacterLimit)")
+                                    .font(.caption)
+                                    .foregroundColor(inputText.count > freeCharacterLimit ? .red : .gray)
+                            }
                         }
                     }
                     
@@ -338,7 +433,7 @@ struct TranslateView: View {
                             // Placeholder text
                             Group {
                                 if inputText.isEmpty {
-                                    Text("Enter text to be translated here")
+                                    Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
                                         .foregroundColor(.gray)
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 16)
@@ -359,7 +454,7 @@ struct TranslateView: View {
                 // Translation Section
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Translated Text")
+                        Text(isDecryptMode ? "Decrypted Text" : "Translated Text")
                             .font(.headline)
                         Spacer()
                         
@@ -389,7 +484,7 @@ struct TranslateView: View {
                         Text(translatedText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
-                            .background(Color.blue.opacity(0.1))
+                            .background(isDecryptMode ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
                             .cornerRadius(8)
                             .textSelection(.enabled)
                     }
@@ -454,7 +549,12 @@ struct TranslateView: View {
             translatedText = ""
             return
         }
-        translatedText = languageManager.translate(text: inputText, using: language)
+        
+        if isDecryptMode {
+            translatedText = languageManager.decrypt(text: inputText, using: language)
+        } else {
+            translatedText = languageManager.translate(text: inputText, using: language)
+        }
     }
     
     private func handleMessageResult(_ result: MessageComposeResult) {
@@ -482,6 +582,10 @@ struct TranslateView: View {
 struct LanguageListView: View {
     @EnvironmentObject var languageManager: LanguageManager
     @EnvironmentObject var premiumManager: PremiumManager
+    @State private var showImportAlert = false
+    @State private var importText = ""
+    @State private var showImportResult = false
+    @State private var importResultMessage = ""
     
     var body: some View {
         NavigationView {
@@ -509,11 +613,34 @@ struct LanguageListView: View {
             }
             .navigationTitle("My Languages")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Import") {
+                        showImportAlert = true
+                    }
+                    .foregroundColor(.blue)
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if premiumManager.isPremium || languageManager.languages.count < 1 {
                         NavigationLink("Add", destination: CreateLanguageView())
                     }
                 }
+            }
+            .alert("Import Language", isPresented: $showImportAlert) {
+                TextField("Paste language key here", text: $importText)
+                Button("Import") {
+                    importLanguage()
+                }
+                Button("Cancel", role: .cancel) {
+                    importText = ""
+                }
+            } message: {
+                Text("Paste the language key you received from someone to import their cipher.")
+            }
+            .alert("Import Result", isPresented: $showImportResult) {
+                Button("OK") { }
+            } message: {
+                Text(importResultMessage)
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -524,6 +651,23 @@ struct LanguageListView: View {
             let language = languageManager.languages[index]
             languageManager.deleteLanguage(language)
         }
+    }
+    
+    private func importLanguage() {
+        guard !importText.isEmpty else {
+            importResultMessage = "Please paste a valid language key."
+            showImportResult = true
+            return
+        }
+        
+        if let importedLanguage = languageManager.importLanguage(from: importText) {
+            languageManager.addLanguage(importedLanguage)
+            importResultMessage = "Language '\(importedLanguage.name)' imported successfully! 🎉"
+            importText = ""
+        } else {
+            importResultMessage = "Invalid language key or language already exists."
+        }
+        showImportResult = true
     }
 }
 
@@ -734,6 +878,7 @@ struct CreateLanguageView: View {
 // MARK: - Language Detail View
 struct LanguageDetailView: View {
     @EnvironmentObject var languageManager: LanguageManager
+    @EnvironmentObject var premiumManager: PremiumManager
     let originalLanguage: CustomLanguage
     @State private var isEditing = false
     @State private var tempName: String
@@ -815,6 +960,15 @@ struct LanguageDetailView: View {
         .navigationTitle("Language Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                if premiumManager.isPremium {
+                    Button("Share") {
+                        shareLanguage()
+                    }
+                    .foregroundColor(.blue)
+                }
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 if isEditing {
                     Button("Save") {
@@ -868,6 +1022,16 @@ struct LanguageDetailView: View {
     
     private func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
+    private func shareLanguage() {
+        let exportedString = languageManager.exportLanguage(currentLanguage)
+        let activityVC = UIActivityViewController(activityItems: [exportedString], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(activityVC, animated: true)
+        }
     }
     
     private func startEditing() {
@@ -980,11 +1144,21 @@ struct SettingsView: View {
                                 .foregroundColor(.green)
                             Text("Premium Active")
                         }
+                        
+                        Button("Disable Premium (Testing)") {
+                            premiumManager.isPremium = false
+                        }
+                        .foregroundColor(.red)
                     } else {
                         Button("Upgrade to Premium") {
                             premiumManager.showPaywall = true
                         }
                         .foregroundColor(.purple)
+                        
+                        Button("Enable Premium (Testing)") {
+                            premiumManager.isPremium = true
+                        }
+                        .foregroundColor(.green)
                     }
                     
                     Button("Restore Purchases") {
