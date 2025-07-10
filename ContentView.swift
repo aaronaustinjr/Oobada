@@ -143,6 +143,34 @@ class LanguageManager: ObservableObject {
         saveLanguages()
     }
     
+    func getAccessibleLanguages(isPremium: Bool) -> [CustomLanguage] {
+        if isPremium {
+            return languages
+        } else {
+            // For free users, only return the first language
+            return Array(languages.prefix(1))
+        }
+    }
+    
+    func isLanguageAccessible(_ language: CustomLanguage, isPremium: Bool) -> Bool {
+        if isPremium {
+            return true
+        } else {
+            // Free users can only access their first language
+            return languages.first?.id == language.id
+        }
+    }
+    
+    func handlePremiumStatusChange(isPremium: Bool) {
+        if !isPremium {
+            // If user loses premium, switch to first language if current selection is inaccessible
+            if let selected = selectedLanguage,
+               !isLanguageAccessible(selected, isPremium: isPremium) {
+                selectedLanguage = languages.first
+            }
+        }
+    }
+    
     func translate(text: String, using language: CustomLanguage) -> String {
         var result = ""
         for character in text {
@@ -235,7 +263,15 @@ class LanguageManager: ObservableObject {
 
 // MARK: - Premium Manager
 class PremiumManager: ObservableObject {
-    @Published var isPremium: Bool = false
+    @Published var isPremium: Bool = false {
+        didSet {
+            // Notify language manager when premium status changes
+            NotificationCenter.default.post(
+                name: NSNotification.Name("PremiumStatusChanged"),
+                object: isPremium
+            )
+        }
+    }
     @Published var showPaywall: Bool = false
     
     // Simulate premium features
@@ -296,17 +332,27 @@ struct ContentView: View {
                 }
                 .tag(2)
             
+            HowToView()
+                .tabItem {
+                    Image(systemName: "questionmark.circle")
+                    Text("How To")
+                }
+                .tag(3)
+            
             SettingsView()
                 .tabItem {
                     Image(systemName: "gear")
                     Text("Settings")
                 }
-                .tag(3)
+                .tag(4)
         }
         .accentColor(.purple)
         .preferredColorScheme(themeManager.isDarkMode ? .dark : .light)
         .onAppear {
             setupTabBarAppearance()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SwitchToLanguagesTab"))) { _ in
+            selectedTab = 1
         }
         .sheet(isPresented: $premiumManager.showPaywall) {
             PaywallView()
@@ -365,18 +411,29 @@ struct TranslateView: View {
     
     private let freeCharacterLimit = 100
     
+    var accessibleLanguages: [CustomLanguage] {
+        languageManager.getAccessibleLanguages(isPremium: premiumManager.isPremium)
+    }
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
                 // Language Selector
-                if !languageManager.languages.isEmpty {
+                if !accessibleLanguages.isEmpty {
                     Picker("Select Language", selection: $languageManager.selectedLanguage) {
-                        ForEach(languageManager.languages) { language in
+                        ForEach(accessibleLanguages) { language in
                             Text(language.name).tag(language as CustomLanguage?)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
                     .padding(.horizontal)
+                    .onChange(of: languageManager.selectedLanguage) {
+                        // Ensure selected language is accessible
+                        if let selected = languageManager.selectedLanguage,
+                           !languageManager.isLanguageAccessible(selected, isPremium: premiumManager.isPremium) {
+                            languageManager.selectedLanguage = accessibleLanguages.first
+                        }
+                    }
                 }
                 
                 // Mode Toggle
@@ -540,6 +597,11 @@ struct TranslateView: View {
             .onTapGesture {
                 hideKeyboard()
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PremiumStatusChanged"))) { notification in
+                if let isPremium = notification.object as? Bool {
+                    languageManager.handlePremiumStatusChange(isPremium: isPremium)
+                }
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
     }
@@ -591,14 +653,40 @@ struct LanguageListView: View {
         NavigationView {
             List {
                 ForEach(languageManager.languages) { language in
-                    NavigationLink(destination: LanguageDetailView(language: language)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(language.name)
-                                .font(.headline)
-                            Text("\(language.mapping.count) letters mapped")
-                                .font(.caption)
-                                .foregroundColor(.gray)
+                    let isAccessible = languageManager.isLanguageAccessible(language, isPremium: premiumManager.isPremium)
+                    
+                    if isAccessible {
+                        NavigationLink(destination: LanguageDetailView(language: language)) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(language.name)
+                                    .font(.headline)
+                                Text("\(language.mapping.count) letters mapped")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
                         }
+                    } else {
+                        Button {
+                            premiumManager.showPaywall = true
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(language.name)
+                                            .font(.headline)
+                                            .foregroundColor(.gray)
+                                        Spacer()
+                                        Image(systemName: "lock.fill")
+                                            .foregroundColor(.purple)
+                                            .font(.caption)
+                                    }
+                                    Text("\(language.mapping.count) letters mapped • Premium Required")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .onDelete(perform: deleteLanguages)
@@ -757,11 +845,6 @@ struct CreateLanguageView: View {
                     }
                 }
             }
-            .alert("Language Created!", isPresented: $showSuccessAlert) {
-                Button("OK") {
-                    presentationMode.wrappedValue.dismiss()
-                }
-            }
             .actionSheet(isPresented: $showGenerateOptions) {
                 ActionSheet(
                     title: Text("Generate Mappings"),
@@ -805,7 +888,12 @@ struct CreateLanguageView: View {
         let newLanguage = CustomLanguage(name: languageName, mapping: letterMappings)
         languageManager.addLanguage(newLanguage)
         languageManager.selectedLanguage = newLanguage
-        showSuccessAlert = true
+        
+        // Dismiss and redirect to Languages tab
+        presentationMode.wrappedValue.dismiss()
+        
+        // Post notification to switch to Languages tab
+        NotificationCenter.default.post(name: NSNotification.Name("SwitchToLanguagesTab"), object: nil)
     }
     
     // MARK: - Generation Functions
@@ -884,6 +972,9 @@ struct LanguageDetailView: View {
     @State private var tempName: String
     @State private var tempMappings: [Character: String]
     @State private var showGenerateOptions = false
+    @State private var showDeleteAlert = false
+    @State private var showReshareAlert = false
+    @Environment(\.presentationMode) var presentationMode
     
     init(language: CustomLanguage) {
         self.originalLanguage = language
@@ -944,6 +1035,15 @@ struct LanguageDetailView: View {
                 }
             }
             
+            // Delete Section
+            Section {
+                Button("Delete Language") {
+                    showDeleteAlert = true
+                }
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+            
             // Invisible section for tap-to-dismiss (only when editing)
             if isEditing {
                 Section {
@@ -961,12 +1061,10 @@ struct LanguageDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                if premiumManager.isPremium {
-                    Button("Share") {
-                        shareLanguage()
-                    }
-                    .foregroundColor(.blue)
+                Button("Share") {
+                    shareLanguage()
                 }
+                .foregroundColor(.blue)
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -1018,6 +1116,19 @@ struct LanguageDetailView: View {
                 ]
             )
         }
+        .alert("Delete Language", isPresented: $showDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                deleteLanguage()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to delete '\(currentLanguage.name)'? This action cannot be undone.")
+        }
+        .alert("Language Updated", isPresented: $showReshareAlert) {
+            Button("OK") { }
+        } message: {
+            Text("⚠️ Important: You've changed this language. If you've shared it with others, you'll need to share the updated version for them to decrypt your new messages correctly.")
+        }
     }
     
     private func hideKeyboard() {
@@ -1042,11 +1153,24 @@ struct LanguageDetailView: View {
     }
     
     private func saveChanges() {
+        // Check if anything actually changed
+        let hasChanges = tempName != currentLanguage.name || tempMappings != currentLanguage.mapping
+        
         var updatedLanguage = currentLanguage
         updatedLanguage.name = tempName
         updatedLanguage.mapping = tempMappings
         languageManager.updateLanguage(updatedLanguage)
         isEditing = false
+        
+        // Show reshare alert if there were changes
+        if hasChanges {
+            showReshareAlert = true
+        }
+    }
+    
+    private func deleteLanguage() {
+        languageManager.deleteLanguage(currentLanguage)
+        presentationMode.wrappedValue.dismiss()
     }
     
     // MARK: - Generation Functions
@@ -1116,7 +1240,212 @@ struct LanguageDetailView: View {
     }
 }
 
-// MARK: - Settings View
+// MARK: - How To View
+struct HowToView: View {
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    // Welcome Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "hand.wave.fill")
+                                .foregroundColor(.yellow)
+                                .font(.title2)
+                            Text("Welcome to Oobada!")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                        }
+                        
+                        Text("Create your own secret languages and share encrypted messages with friends! Here's how to get started:")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    // Step-by-step guides
+                    InstructionSection(
+                        icon: "plus.circle.fill",
+                        iconColor: .green,
+                        title: "1. Create Your First Language",
+                        steps: [
+                            "Go to the 'Create' tab",
+                            "Enter a name for your language (e.g., 'Secret Code')",
+                            "Map each letter A-Z to something new:",
+                            "  • Manually: Type custom characters for each letter",
+                            "  • Automatically: Tap 'Generate for Me' for instant mapping",
+                            "Tap 'Save' when finished"
+                        ]
+                    )
+                    
+                    InstructionSection(
+                        icon: "square.and.arrow.up.fill",
+                        iconColor: .purple,
+                        title: "2. Share Your Language Key",
+                        steps: [
+                            "Go to 'Languages' tab and tap your language",
+                            "Tap 'Share' in the top-left corner",
+                            "Send the language key to your friend via:",
+                            "  • Text message",
+                            "  • Email",
+                            "  • AirDrop",
+                            "  • Any messaging app"
+                        ]
+                    )
+                    
+                    InstructionSection(
+                        icon: "textformat.abc.dottedunderline",
+                        iconColor: .blue,
+                        title: "3. Encrypt Messages",
+                        steps: [
+                            "Go to the 'Translate' tab",
+                            "Select your language from the dropdown",
+                            "Make sure '🔒 Encrypt' mode is selected",
+                            "Type your message in 'Original Text'",
+                            "Your encrypted message appears in 'Translated Text'",
+                            "Tap 'Copy' to share it anywhere!"
+                        ]
+                    )
+                    
+                    InstructionSection(
+                        icon: "square.and.arrow.down.fill",
+                        iconColor: .orange,
+                        title: "4. Import a Friend's Language",
+                        steps: [
+                            "Go to the 'Languages' tab",
+                            "Tap 'Import' in the top-left corner",
+                            "Paste the language key your friend sent you",
+                            "Tap 'Import' - the language is now in your app!"
+                        ]
+                    )
+                    
+                    InstructionSection(
+                        icon: "lock.open.fill",
+                        iconColor: .green,
+                        title: "5. Decrypt Messages",
+                        steps: [
+                            "Go to the 'Translate' tab",
+                            "Select the same language used to encrypt",
+                            "Switch to '🔓 Decrypt' mode",
+                            "Paste the encrypted message in 'Encrypted Text'",
+                            "The original message appears in 'Decrypted Text'!"
+                        ]
+                    )
+                    
+                    // Tips Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "lightbulb.fill")
+                                .foregroundColor(.yellow)
+                                .font(.title2)
+                            Text("Pro Tips")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            TipRow(text: "Use 'Generate for Me' for quick, fun language creation")
+                            TipRow(text: "Try different styles: Shuffled Letters, Emojis, Symbols, etc.")
+                            TipRow(text: "Both you and your friend need the same language to communicate")
+                            TipRow(text: "If you edit a language, reshare it with your contacts")
+                            TipRow(text: "Premium users can create unlimited languages and send SMS")
+                            TipRow(text: "Free users get 1 language and 100 character limit")
+                        }
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                    
+                    // Example Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "doc.text.fill")
+                                .foregroundColor(.blue)
+                                .font(.title2)
+                            Text("Example")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("If you map: A→★, B→♦, C→●")
+                                .font(.body)
+                            Text("Then 'ABC' becomes '★♦●'")
+                                .font(.body)
+                            Text("Your friend imports your language and decrypts '★♦●' back to 'ABC'")
+                                .font(.body)
+                        }
+                    }
+                    .padding()
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(12)
+                    
+                    Spacer(minLength: 20)
+                }
+                .padding()
+            }
+            .navigationTitle("How To Use Oobada")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+}
+
+// MARK: - Helper Views
+struct InstructionSection: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let steps: [String]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(iconColor)
+                    .font(.title2)
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(steps, id: \.self) { step in
+                    HStack(alignment: .top, spacing: 8) {
+                        if step.hasPrefix("  •") {
+                            Text("    •")
+                                .foregroundColor(.secondary)
+                        } else if !step.contains(":") {
+                            Text("•")
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("")
+                        }
+                        
+                        Text(step.replacingOccurrences(of: "  • ", with: ""))
+                            .font(.body)
+                    }
+                }
+            }
+            .padding(.leading, 8)
+        }
+        .padding()
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(12)
+    }
+}
+
+struct TipRow: View {
+    let text: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("💡")
+                .font(.caption)
+            Text(text)
+                .font(.body)
+        }
+    }
+}
 struct SettingsView: View {
     @EnvironmentObject var premiumManager: PremiumManager
     @EnvironmentObject var themeManager: ThemeManager
@@ -1211,8 +1540,8 @@ struct PaywallView: View {
                     FeatureRow(icon: "infinity", title: "Unlimited Languages", description: "Create as many secret languages as you want")
                     FeatureRow(icon: "textformat.size.larger", title: "Longer Messages", description: "Translate up to 500+ characters at once")
                     FeatureRow(icon: "message.fill", title: "Send SMS", description: "Send translated messages directly via text message")
-                    FeatureRow(icon: "square.and.arrow.up", title: "Share Languages", description: "Export and share your languages with friends")
                     FeatureRow(icon: "face.smiling", title: "Emoji Mode", description: "Use emojis and special characters in your codes")
+                    FeatureRow(icon: "wand.and.stars", title: "Advanced Generation", description: "More generation styles and customization options")
                 }
                 
                 VStack(spacing: 15) {
