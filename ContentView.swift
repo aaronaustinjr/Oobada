@@ -446,6 +446,37 @@ struct TranslateView: View {
         isDecryptMode ? decryptInputText : encryptInputText
     }
     
+    // Gradient border for input box
+    private var gradientBorder: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .stroke(
+                LinearGradient(
+                    gradient: Gradient(colors: [.teal, .green]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 2
+            )
+    }
+    
+    // Background color for translated text
+    private var translatedTextBackground: Color {
+        if isDecryptMode {
+            return Color.mint.opacity(0.15)
+        } else {
+            return Color.teal.opacity(0.15)
+        }
+    }
+    
+    // Border color for translated text
+    private var translatedTextBorder: Color {
+        if isDecryptMode {
+            return Color.mint.opacity(0.5)
+        } else {
+            return Color.teal.opacity(0.5)
+        }
+    }
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
@@ -516,40 +547,39 @@ struct TranslateView: View {
                         }
                     }
                     
-                    TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
-                        .frame(minHeight: 100)
-                        .padding(8)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
-                        .overlay(
-                            // Placeholder text
-                            Group {
-                                if currentInputText.isEmpty {
-                                    Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
-                                        .foregroundColor(.gray)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 16)
-                                        .allowsHitTesting(false)
-                                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                }
-                            }
-                        )
-                        .onChange(of: encryptInputText) {
-                            if !isDecryptMode {
-                                if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
-                                    encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
-                                }
-                                updateTranslation()
-                            }
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: isDecryptMode ? $decryptInputText : $encryptInputText)
+                            .frame(minHeight: 100)
+                            .padding(8)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                            .overlay(gradientBorder)
+                        
+                        // Placeholder text
+                        if currentInputText.isEmpty {
+                            Text(isDecryptMode ? "Enter encrypted text to decrypt here" : "Enter text to be translated here")
+                                .foregroundColor(.gray)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 16)
+                                .allowsHitTesting(false)
                         }
-                        .onChange(of: decryptInputText) {
-                            if isDecryptMode {
-                                if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
-                                    decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
-                                }
-                                updateTranslation()
+                    }
+                    .onChange(of: encryptInputText) {
+                        if !isDecryptMode {
+                            if !premiumManager.isPremium && encryptInputText.count > freeCharacterLimit {
+                                encryptInputText = String(encryptInputText.prefix(freeCharacterLimit))
                             }
+                            updateTranslation()
                         }
+                    }
+                    .onChange(of: decryptInputText) {
+                        if isDecryptMode {
+                            if !premiumManager.isPremium && decryptInputText.count > freeCharacterLimit {
+                                decryptInputText = String(decryptInputText.prefix(freeCharacterLimit))
+                            }
+                            updateTranslation()
+                        }
+                    }
                 }
                 .padding(.horizontal)
                 
@@ -586,8 +616,12 @@ struct TranslateView: View {
                         Text(translatedText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(8)
-                            .background(isDecryptMode ? Color.green.opacity(0.1) : Color.blue.opacity(0.1))
+                            .background(translatedTextBackground)
                             .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(translatedTextBorder, lineWidth: 1)
+                            )
                             .textSelection(.enabled)
                     }
                     .frame(minHeight: 100)
@@ -620,7 +654,7 @@ struct TranslateView: View {
                         .fontWeight(.bold)
                         .foregroundStyle(
                             LinearGradient(
-                                gradient: Gradient(colors: [.teal, .green]), // Changed from [.purple, .blue]
+                                gradient: Gradient(colors: [.teal, .green]),
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
