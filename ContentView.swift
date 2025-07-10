@@ -176,7 +176,12 @@ class LanguageManager: ObservableObject {
         for character in text {
             let lowerChar = Character(character.lowercased())
             if let mapped = language.mapping[lowerChar] {
-                result += mapped
+                // If original character was uppercase, make the mapped result uppercase
+                if character.isUppercase {
+                    result += mapped.uppercased()
+                } else {
+                    result += mapped.lowercased()
+                }
             } else {
                 result += String(character)
             }
@@ -197,8 +202,22 @@ class LanguageManager: ObservableObject {
                 let endIndex = text.index(i, offsetBy: length, limitedBy: text.endIndex) ?? text.endIndex
                 let substring = String(text[i..<endIndex])
                 
+                // Try exact match first
                 if let originalChar = reverseMapping[substring] {
                     result += originalChar
+                    i = endIndex
+                    found = true
+                    break
+                }
+                
+                // Try case-insensitive match
+                if let originalChar = reverseMapping[substring.lowercased()] {
+                    // If the cipher was uppercase, make the result uppercase
+                    if substring.first?.isUppercase == true {
+                        result += originalChar.uppercased()
+                    } else {
+                        result += originalChar.lowercased()
+                    }
                     i = endIndex
                     found = true
                     break
@@ -217,7 +236,9 @@ class LanguageManager: ObservableObject {
     private func createReverseMapping(from mapping: [Character: String]) -> [String: String] {
         var reverseMapping: [String: String] = [:]
         for (key, value) in mapping {
-            reverseMapping[value] = String(key)
+            // Create reverse mappings for both cases
+            reverseMapping[value.lowercased()] = String(key)
+            reverseMapping[value.uppercased()] = String(key)
         }
         return reverseMapping
     }
@@ -767,6 +788,8 @@ struct CreateLanguageView: View {
     @State private var letterMappings: [Character: String] = [:]
     @State private var showSuccessAlert = false
     @State private var showGenerateOptions = false
+    @State private var showDuplicateAlert = false
+    @State private var duplicateMessage = ""
     @Environment(\.presentationMode) var presentationMode
     
     private let alphabet = "abcdefghijklmnopqrstuvwxyz"
@@ -800,7 +823,9 @@ struct CreateLanguageView: View {
                             
                             TextField("Map to...", text: Binding(
                                 get: { letterMappings[letter] ?? "" },
-                                set: { letterMappings[letter] = $0.isEmpty ? nil : $0 }
+                                set: { newValue in
+                                    validateAndSetMapping(for: letter, value: newValue)
+                                }
                             ))
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                         }
@@ -869,8 +894,36 @@ struct CreateLanguageView: View {
                     ]
                 )
             }
+            .alert("Duplicate Mapping", isPresented: $showDuplicateAlert) {
+                Button("OK") { }
+            } message: {
+                Text(duplicateMessage)
+            }
         }
         .navigationViewStyle(StackNavigationViewStyle())
+    }
+    
+    private func validateAndSetMapping(for letter: Character, value: String) {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If empty, just remove the mapping
+        if trimmedValue.isEmpty {
+            letterMappings[letter] = nil
+            return
+        }
+        
+        // Check for duplicates (case-insensitive)
+        for (existingLetter, existingValue) in letterMappings {
+            if existingLetter != letter &&
+               existingValue.lowercased() == trimmedValue.lowercased() {
+                duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingLetter.uppercased())'. Each cipher character can only be used once."
+                showDuplicateAlert = true
+                return
+            }
+        }
+        
+        // If no duplicates, set the mapping
+        letterMappings[letter] = trimmedValue
     }
     
     private func hideKeyboard() {
@@ -909,56 +962,73 @@ struct CreateLanguageView: View {
     private func generateNumbers() {
         letterMappings.removeAll()
         
+        // Create 26 unique number combinations
+        var numbers: [String] = []
+        
+        // Single digits 0-9 (10 numbers)
+        for i in 0...9 {
+            numbers.append(String(i))
+        }
+        
+        // Two-digit numbers 10-25 (16 more numbers)
+        for i in 10...25 {
+            numbers.append(String(i))
+        }
+        
+        // Shuffle to randomize assignment
+        numbers.shuffle()
+        
         for (index, letter) in alphabet.enumerated() {
-            let number = (index + 1) % 10 // Cycles 1-9, then 0
-            letterMappings[letter] = "\(number)"
+            letterMappings[letter] = numbers[index]
         }
     }
     
     private func generateEmojis() {
-        let emojiSets = [
-            "😀😃😄😁😆😅😂🤣😊😇",
-            "🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯",
-            "🍎🍊🍋🍌🍉🍇🍓🍈🍒🍑",
-            "⚽🏀🏈⚾🎾🏐🏉🎱🏓🏸",
-            "🌟⭐✨💫⚡🔥💥💢💨💤"
+        let emojiCollections = [
+            ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "☺️", "😋", "😛", "😝", "😜", "🤪"],
+            ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺"],
+            ["🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥒", "🌶️", "🌽", "🥕", "🥔", "🍠", "🥖", "🥨"],
+            ["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🎱", "🏓", "🏸", "🏑", "🏒", "🥍", "🏏", "⛳", "🏹", "🎣", "🥊", "🥋", "🎽", "⛷️", "🏂", "🏄", "🚣", "🏊", "⛹️"],
+            ["🌟", "⭐", "✨", "💫", "⚡", "🔥", "💥", "💢", "💨", "💤", "💦", "💧", "🌈", "☀️", "🌤️", "⛅", "🌦️", "🌧️", "⛈️", "🌩️", "🌨️", "❄️", "☃️", "⛄", "🌬️", "💨"]
         ]
         
-        let selectedSet = emojiSets.randomElement() ?? emojiSets[0]
-        let emojis = Array(selectedSet)
+        // Pick a random collection and shuffle it
+        let selectedCollection = emojiCollections.randomElement() ?? emojiCollections[0]
+        let shuffledEmojis = selectedCollection.shuffled()
         
         letterMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
-            let emojiIndex = index % emojis.count
-            letterMappings[letter] = String(emojis[emojiIndex])
+            letterMappings[letter] = shuffledEmojis[index]
         }
     }
     
     private func generateSymbols() {
-        let symbols = ["★", "♦", "♠", "♥", "♣", "◆", "◇", "◈", "○", "●", "◯", "◉", "△", "▲", "▽", "▼", "□", "■", "◦", "‣", "⁂", "※", "‼", "⁇", "⁈", "⁉"]
+        let symbols = [
+            "★", "☆", "♦", "♠", "♥", "♣", "◆", "◇", "◈", "○", "●", "◯", "◉", "△", "▲", "▽", "▼",
+            "□", "■", "◦", "‣", "⁂", "※", "‼", "⁇", "⁈"
+        ]
         
+        let shuffledSymbols = symbols.shuffled()
         letterMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
-            let symbolIndex = index % symbols.count
-            letterMappings[letter] = symbols[symbolIndex]
+            letterMappings[letter] = shuffledSymbols[index]
         }
     }
     
     private func generateMixedStyle() {
         let letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
-        let numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-        let symbols = ["★", "♦", "♠", "♥", "◆", "●", "▲", "■"]
-        let emojis = ["😊", "🔥", "⭐", "💎", "🎯", "🚀"]
+        let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        let symbols = ["★", "♦", "♠", "♥", "◆", "●"]
+        let emojis = ["😊", "🔥", "⭐", "💎"]
         
         let allCharacters = letters + numbers + symbols + emojis
         let shuffledMix = allCharacters.shuffled()
         letterMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
-            let charIndex = index % shuffledMix.count
-            letterMappings[letter] = shuffledMix[charIndex]
+            letterMappings[letter] = shuffledMix[index]
         }
     }
 }
@@ -974,6 +1044,8 @@ struct LanguageDetailView: View {
     @State private var showGenerateOptions = false
     @State private var showDeleteAlert = false
     @State private var showReshareAlert = false
+    @State private var showDuplicateAlert = false
+    @State private var duplicateMessage = ""
     @Environment(\.presentationMode) var presentationMode
     
     init(language: CustomLanguage) {
@@ -1024,7 +1096,9 @@ struct LanguageDetailView: View {
                         if isEditing {
                             TextField("Map to...", text: Binding(
                                 get: { tempMappings[letter] ?? "" },
-                                set: { tempMappings[letter] = $0.isEmpty ? nil : $0 }
+                                set: { newValue in
+                                    validateAndSetMapping(for: letter, value: newValue)
+                                }
                             ))
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                         } else {
@@ -1129,6 +1203,34 @@ struct LanguageDetailView: View {
         } message: {
             Text("⚠️ Important: You've changed this language. If you've shared it with others, you'll need to share the updated version for them to decrypt your new messages correctly.")
         }
+        .alert("Duplicate Mapping", isPresented: $showDuplicateAlert) {
+            Button("OK") { }
+        } message: {
+            Text(duplicateMessage)
+        }
+    }
+    
+    private func validateAndSetMapping(for letter: Character, value: String) {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If empty, just remove the mapping
+        if trimmedValue.isEmpty {
+            tempMappings[letter] = nil
+            return
+        }
+        
+        // Check for duplicates (case-insensitive)
+        for (existingLetter, existingValue) in tempMappings {
+            if existingLetter != letter &&
+               existingValue.lowercased() == trimmedValue.lowercased() {
+                duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingLetter.uppercased())'. Each cipher character can only be used once."
+                showDuplicateAlert = true
+                return
+            }
+        }
+        
+        // If no duplicates, set the mapping
+        tempMappings[letter] = trimmedValue
     }
     
     private func hideKeyboard() {
@@ -1186,56 +1288,73 @@ struct LanguageDetailView: View {
     private func generateNumbers() {
         tempMappings.removeAll()
         
+        // Create 26 unique number combinations
+        var numbers: [String] = []
+        
+        // Single digits 0-9 (10 numbers)
+        for i in 0...9 {
+            numbers.append(String(i))
+        }
+        
+        // Two-digit numbers 10-25 (16 more numbers)
+        for i in 10...25 {
+            numbers.append(String(i))
+        }
+        
+        // Shuffle to randomize assignment
+        numbers.shuffle()
+        
         for (index, letter) in alphabet.enumerated() {
-            let number = (index + 1) % 10 // Cycles 1-9, then 0
-            tempMappings[letter] = "\(number)"
+            tempMappings[letter] = numbers[index]
         }
     }
     
     private func generateEmojis() {
-        let emojiSets = [
-            "😀😃😄😁😆😅😂🤣😊😇",
-            "🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯",
-            "🍎🍊🍋🍌🍉🍇🍓🍈🍒🍑",
-            "⚽🏀🏈⚾🎾🏐🏉🎱🏓🏸",
-            "🌟⭐✨💫⚡🔥💥💢💨💤"
+        let emojiCollections = [
+            ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "☺️", "😋", "😛", "😝", "😜", "🤪"],
+            ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺"],
+            ["🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍈", "🍒", "🍑", "🥭", "🍍", "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥒", "🌶️", "🌽", "🥕", "🥔", "🍠", "🥖", "🥨"],
+            ["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🏉", "🎱", "🏓", "🏸", "🏑", "🏒", "🥍", "🏏", "⛳", "🏹", "🎣", "🥊", "🥋", "🎽", "⛷️", "🏂", "🏄", "🚣", "🏊", "⛹️"],
+            ["🌟", "⭐", "✨", "💫", "⚡", "🔥", "💥", "💢", "💨", "💤", "💦", "💧", "🌈", "☀️", "🌤️", "⛅", "🌦️", "🌧️", "⛈️", "🌩️", "🌨️", "❄️", "☃️", "⛄", "🌬️", "💨"]
         ]
         
-        let selectedSet = emojiSets.randomElement() ?? emojiSets[0]
-        let emojis = Array(selectedSet)
+        // Pick a random collection and shuffle it
+        let selectedCollection = emojiCollections.randomElement() ?? emojiCollections[0]
+        let shuffledEmojis = selectedCollection.shuffled()
         
         tempMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
-            let emojiIndex = index % emojis.count
-            tempMappings[letter] = String(emojis[emojiIndex])
+            tempMappings[letter] = shuffledEmojis[index]
         }
     }
     
     private func generateSymbols() {
-        let symbols = ["★", "♦", "♠", "♥", "♣", "◆", "◇", "◈", "○", "●", "◯", "◉", "△", "▲", "▽", "▼", "□", "■", "◦", "‣", "⁂", "※", "‼", "⁇", "⁈", "⁉"]
+        let symbols = [
+            "★", "☆", "♦", "♠", "♥", "♣", "◆", "◇", "◈", "○", "●", "◯", "◉", "△", "▲", "▽", "▼",
+            "□", "■", "◦", "‣", "⁂", "※", "‼", "⁇", "⁈"
+        ]
         
+        let shuffledSymbols = symbols.shuffled()
         tempMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
-            let symbolIndex = index % symbols.count
-            tempMappings[letter] = symbols[symbolIndex]
+            tempMappings[letter] = shuffledSymbols[index]
         }
     }
     
     private func generateMixedStyle() {
         let letters = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
-        let numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-        let symbols = ["★", "♦", "♠", "♥", "◆", "●", "▲", "■"]
-        let emojis = ["😊", "🔥", "⭐", "💎", "🎯", "🚀"]
+        let numbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+        let symbols = ["★", "♦", "♠", "♥", "◆", "●"]
+        let emojis = ["😊", "🔥", "⭐", "💎"]
         
         let allCharacters = letters + numbers + symbols + emojis
         let shuffledMix = allCharacters.shuffled()
         tempMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
-            let charIndex = index % shuffledMix.count
-            tempMappings[letter] = shuffledMix[charIndex]
+            tempMappings[letter] = shuffledMix[index]
         }
     }
 }
@@ -1278,9 +1397,23 @@ struct HowToView: View {
                     )
                     
                     InstructionSection(
+                        icon: "textformat.abc.dottedunderline",
+                        iconColor: .blue,
+                        title: "2. Encrypt Messages",
+                        steps: [
+                            "Go to the 'Translate' tab",
+                            "Select your language from the dropdown",
+                            "Make sure '🔒 Encrypt' mode is selected",
+                            "Type your message in 'Original Text'",
+                            "Your encrypted message appears in 'Translated Text'",
+                            "Tap 'Copy' to share it anywhere!"
+                        ]
+                    )
+                    
+                    InstructionSection(
                         icon: "square.and.arrow.up.fill",
                         iconColor: .purple,
-                        title: "2. Share Your Language Key",
+                        title: "3. Share Your Language Key",
                         steps: [
                             "Go to 'Languages' tab and tap your language",
                             "Tap 'Share' in the top-left corner",
@@ -1289,20 +1422,6 @@ struct HowToView: View {
                             "  • Email",
                             "  • AirDrop",
                             "  • Any messaging app"
-                        ]
-                    )
-                    
-                    InstructionSection(
-                        icon: "textformat.abc.dottedunderline",
-                        iconColor: .blue,
-                        title: "3. Encrypt Messages",
-                        steps: [
-                            "Go to the 'Translate' tab",
-                            "Select your language from the dropdown",
-                            "Make sure '🔒 Encrypt' mode is selected",
-                            "Type your message in 'Original Text'",
-                            "Your encrypted message appears in 'Translated Text'",
-                            "Tap 'Copy' to share it anywhere!"
                         ]
                     )
                     
@@ -1367,11 +1486,13 @@ struct HowToView: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("If you map: A→★, B→♦, C→●")
+                            Text("If you map: a→e, b→x, c→z")
                                 .font(.body)
-                            Text("Then 'ABC' becomes '★♦●'")
+                            Text("Then 'Hello' becomes 'eexxa' and 'HELLO' becomes 'EEXXA'")
                                 .font(.body)
-                            Text("Your friend imports your language and decrypts '★♦●' back to 'ABC'")
+                            Text("Both uppercase and lowercase letters use the same mapping")
+                                .font(.body)
+                            Text("Your friend imports your language and can decrypt both cases")
                                 .font(.body)
                         }
                     }
