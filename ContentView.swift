@@ -360,12 +360,45 @@ class PremiumManager: ObservableObject {
             )
         }
     }
-    @Published var showPaywall: Bool = false
+    @Published var showPaywall: Bool = false {
+        didSet {
+            print("PremiumManager: showPaywall changed to \(showPaywall)")
+        }
+    }
+    
+    private var isShowingPaywall: Bool = false
+    
+    func showPaywallScreen() {
+        print("PremiumManager: showPaywallScreen called")
+        
+        // Prevent multiple simultaneous presentations
+        guard !isShowingPaywall && !showPaywall else {
+            print("PremiumManager: Prevented duplicate presentation")
+            return
+        }
+        
+        isShowingPaywall = true
+        
+        // For iPad, we need to ensure we're on the main thread and give it a bit more time
+        DispatchQueue.main.async {
+            // Double check we're still in a valid state
+            if !self.showPaywall {
+                print("PremiumManager: Setting showPaywall to true")
+                self.showPaywall = true
+            }
+            
+            // Reset the flag after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.isShowingPaywall = false
+            }
+        }
+    }
     
     // Simulate premium features
     func purchasePremium() {
         isPremium = true
         showPaywall = false
+        isShowingPaywall = false
     }
     
     func restorePurchases() {
@@ -459,8 +492,16 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SwitchToTranslateTab"))) { _ in
             selectedTab = 0
         }
-        .sheet(isPresented: $premiumManager.showPaywall) {
+        .fullScreenCover(isPresented: $premiumManager.showPaywall) {
             PaywallView()
+                .onAppear {
+                    // Reset the presentation state when paywall appears
+                    print("Paywall appeared")
+                }
+                .onDisappear {
+                    // Ensure clean state when paywall disappears
+                    print("Paywall disappeared")
+                }
         }
     }
     
@@ -766,9 +807,6 @@ struct TranslateView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $premiumManager.showPaywall) {
-            PaywallView()
-        }
         .onTapGesture {
             hideKeyboard()
         }
@@ -874,7 +912,7 @@ struct LanguageListView: View {
                         }
                     } else {
                         Button {
-                            premiumManager.showPaywall = true
+                            premiumManager.showPaywallScreen()
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -910,7 +948,7 @@ struct LanguageListView: View {
                 
                 if !premiumManager.isPremium && languageManager.languages.count >= 1 {
                     Button("Create More Languages") {
-                        premiumManager.showPaywall = true
+                        premiumManager.showPaywallScreen()
                     }
                     .foregroundColor(.teal)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -1265,7 +1303,7 @@ struct CreateLanguageView: View {
         guard !languageName.isEmpty else { return }
         
         if !premiumManager.isPremium && languageManager.languages.count >= 1 {
-            premiumManager.showPaywall = true
+            premiumManager.showPaywallScreen()
             return
         }
         
@@ -2255,7 +2293,7 @@ struct HowToView: View {
                                 .padding(.horizontal, 20)
                             } else {
                                 Button {
-                                    premiumManager.showPaywall = true
+                                    premiumManager.showPaywallScreen()
                                 } label: {
                                     VStack(spacing: 12) {
                                         HStack {
@@ -2604,7 +2642,7 @@ struct SettingsView: View {
                         .foregroundColor(.red)
                     } else {
                         Button("Upgrade to Premium") {
-                            premiumManager.showPaywall = true
+                            premiumManager.showPaywallScreen()
                         }
                         .foregroundColor(.teal)
                         
