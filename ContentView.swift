@@ -729,7 +729,7 @@ struct TranslateView: View {
                             .multilineTextAlignment(.center)
                         
                         Button("Upgrade to Premium") {
-                            premiumManager.showPaywall = true
+                            premiumManager.showPaywallScreen()
                         }
                         .buttonStyle(PremiumButtonStyle())
                     }
