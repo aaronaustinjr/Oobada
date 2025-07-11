@@ -360,37 +360,13 @@ class PremiumManager: ObservableObject {
             )
         }
     }
-    @Published var showPaywall: Bool = false {
-        didSet {
-            print("PremiumManager: showPaywall changed to \(showPaywall)")
-        }
-    }
-    
-    private var isShowingPaywall: Bool = false
+    @Published var showPaywall: Bool = false
     
     func showPaywallScreen() {
-        print("PremiumManager: showPaywallScreen called")
-        
-        // Prevent multiple simultaneous presentations
-        guard !isShowingPaywall && !showPaywall else {
-            print("PremiumManager: Prevented duplicate presentation")
-            return
-        }
-        
-        isShowingPaywall = true
-        
-        // For iPad, we need to ensure we're on the main thread and give it a bit more time
-        DispatchQueue.main.async {
-            // Double check we're still in a valid state
-            if !self.showPaywall {
-                print("PremiumManager: Setting showPaywall to true")
-                self.showPaywall = true
-            }
-            
-            // Reset the flag after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.isShowingPaywall = false
-            }
+        // Simple, direct approach - just set the boolean
+        // SwiftUI will handle the presentation timing
+        if !showPaywall {
+            showPaywall = true
         }
     }
     
@@ -398,7 +374,6 @@ class PremiumManager: ObservableObject {
     func purchasePremium() {
         isPremium = true
         showPaywall = false
-        isShowingPaywall = false
     }
     
     func restorePurchases() {
