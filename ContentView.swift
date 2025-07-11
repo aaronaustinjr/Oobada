@@ -766,7 +766,7 @@ struct TranslateView: View {
                 }
             }
         }
-        .sheet(isPresented: $premiumManager.showPaywall) {
+        .fullScreenCover(isPresented: $premiumManager.showPaywall) {
             PaywallView()
         }
         .onTapGesture {
