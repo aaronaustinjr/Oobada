@@ -45,12 +45,14 @@ struct CustomLanguage: Identifiable, Codable, Hashable {
     var id: UUID
     var name: String
     var mapping: [Character: String]
+    var numberMapping: [Character: String] // New: mapping for numbers 0-9
     var createdDate: Date
     
-    init(name: String, mapping: [Character: String] = [:]) {
+    init(name: String, mapping: [Character: String] = [:], numberMapping: [Character: String] = [:]) {
         self.id = UUID()
         self.name = name
         self.mapping = mapping
+        self.numberMapping = numberMapping
         self.createdDate = Date()
     }
     
@@ -65,7 +67,7 @@ struct CustomLanguage: Identifiable, Codable, Hashable {
     
     // MARK: - Codable conformance
     enum CodingKeys: String, CodingKey {
-        case id, name, mapping, createdDate
+        case id, name, mapping, numberMapping, createdDate
     }
     
     init(from decoder: Decoder) throws {
@@ -82,6 +84,15 @@ struct CustomLanguage: Identifiable, Codable, Hashable {
                 mapping[character] = value
             }
         }
+        
+        // Handle Character keys in numberMapping dictionary (with default for backwards compatibility)
+        let numberMappingData = try container.decodeIfPresent([String: String].self, forKey: .numberMapping) ?? [:]
+        numberMapping = [:]
+        for (key, value) in numberMappingData {
+            if let character = key.first {
+                numberMapping[character] = value
+            }
+        }
     }
     
     func encode(to encoder: Encoder) throws {
@@ -95,6 +106,12 @@ struct CustomLanguage: Identifiable, Codable, Hashable {
             result[String(pair.key)] = pair.value
         }
         try container.encode(mappingData, forKey: .mapping)
+        
+        // Convert Character keys to String keys for numberMapping
+        let numberMappingData = numberMapping.reduce(into: [String: String]()) { result, pair in
+            result[String(pair.key)] = pair.value
+        }
+        try container.encode(numberMappingData, forKey: .numberMapping)
     }
 }
 
@@ -147,8 +164,17 @@ class LanguageManager: ObservableObject {
         if isPremium {
             return languages
         } else {
-            // For free users, only return the first language
-            return Array(languages.prefix(1))
+            // For free users, only return languages without premium features
+            return languages.filter { language in
+                // Check if this is the first language (always accessible for free users)
+                let isFirstLanguage = languages.first?.id == language.id
+                
+                // Check if language has premium features (number mappings)
+                let hasPremiumFeatures = !language.numberMapping.isEmpty
+                
+                // Free users can access: their first language OR languages without premium features
+                return isFirstLanguage || !hasPremiumFeatures
+            }
         }
     }
     
@@ -156,7 +182,21 @@ class LanguageManager: ObservableObject {
         if isPremium {
             return true
         } else {
-            // Free users can only access their first language
+            // Free users can access their first language regardless of features
+            let isFirstLanguage = languages.first?.id == language.id
+            
+            // Or any language without premium features
+            let hasPremiumFeatures = !language.numberMapping.isEmpty
+            
+            return isFirstLanguage || !hasPremiumFeatures
+        }
+    }
+    
+    func canUseLanguageFeatures(_ language: CustomLanguage, isPremium: Bool) -> Bool {
+        if isPremium {
+            return true
+        } else {
+            // Free users can only use the full features of their first language
             return languages.first?.id == language.id
         }
     }
@@ -171,11 +211,19 @@ class LanguageManager: ObservableObject {
         }
     }
     
-    func translate(text: String, using language: CustomLanguage) -> String {
+    func translate(text: String, using language: CustomLanguage, isPremium: Bool) -> String {
         var result = ""
         for character in text {
             let lowerChar = Character(character.lowercased())
-            if let mapped = language.mapping[lowerChar] {
+            
+            // Check if it's a number (0-9) and if premium features are accessible
+            if character.isNumber,
+               canUseLanguageFeatures(language, isPremium: isPremium),
+               let mapped = language.numberMapping[character] {
+                result += mapped
+            }
+            // Check if it's a letter
+            else if let mapped = language.mapping[lowerChar] {
                 // If original character was uppercase, make the mapped result uppercase
                 if character.isUppercase {
                     result += mapped.uppercased()
@@ -189,9 +237,10 @@ class LanguageManager: ObservableObject {
         return result
     }
     
-    func decrypt(text: String, using language: CustomLanguage) -> String {
+    func decrypt(text: String, using language: CustomLanguage, isPremium: Bool) -> String {
         var result = ""
         let reverseMapping = createReverseMapping(from: language.mapping)
+        let reverseNumberMapping = createReverseNumberMapping(from: language.numberMapping)
         
         var i = text.startIndex
         while i < text.endIndex {
@@ -202,7 +251,16 @@ class LanguageManager: ObservableObject {
                 let endIndex = text.index(i, offsetBy: length, limitedBy: text.endIndex) ?? text.endIndex
                 let substring = String(text[i..<endIndex])
                 
-                // Try exact match first
+                // Try exact match in number mapping first (only if premium features accessible)
+                if canUseLanguageFeatures(language, isPremium: isPremium),
+                   let originalChar = reverseNumberMapping[substring] {
+                    result += originalChar
+                    i = endIndex
+                    found = true
+                    break
+                }
+                
+                // Try exact match in letter mapping
                 if let originalChar = reverseMapping[substring] {
                     result += originalChar
                     i = endIndex
@@ -210,7 +268,7 @@ class LanguageManager: ObservableObject {
                     break
                 }
                 
-                // Try case-insensitive match
+                // Try case-insensitive match in letter mapping
                 if let originalChar = reverseMapping[substring.lowercased()] {
                     // If the cipher was uppercase, make the result uppercase
                     if substring.first?.isUppercase == true {
@@ -239,6 +297,15 @@ class LanguageManager: ObservableObject {
             // Create reverse mappings for both cases
             reverseMapping[value.lowercased()] = String(key)
             reverseMapping[value.uppercased()] = String(key)
+        }
+        return reverseMapping
+    }
+    
+    private func createReverseNumberMapping(from numberMapping: [Character: String]) -> [String: String] {
+        var reverseMapping: [String: String] = [:]
+        for (key, value) in numberMapping {
+            // Numbers don't have case variations
+            reverseMapping[value] = String(key)
         }
         return reverseMapping
     }
@@ -624,23 +691,24 @@ struct TranslateView: View {
                     ScrollView {
                         Text(translatedText)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
+                            .padding(12)
                             .background(translatedTextBackground)
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(translatedTextBorder, lineWidth: 1)
-                            )
                             .textSelection(.enabled)
                     }
                     .frame(minHeight: 100)
+                    .background(translatedTextBackground)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(translatedTextBorder, lineWidth: 1)
+                    )
                 }
                 .padding(.horizontal)
                 
                 // Premium Prompt
                 if !premiumManager.isPremium {
                     VStack(spacing: 8) {
-                        Text("Want longer messages, unlimited languages, and SMS sending?")
+                        Text("Want longer messages, unlimited languages, number mapping, and SMS sending?")
                             .font(.subheadline)
                             .multilineTextAlignment(.center)
                         
@@ -698,6 +766,9 @@ struct TranslateView: View {
                 }
             }
         }
+        .sheet(isPresented: $premiumManager.showPaywall) {
+            PaywallView()
+        }
         .onTapGesture {
             hideKeyboard()
         }
@@ -717,9 +788,9 @@ struct TranslateView: View {
         let inputText = currentInputText
         
         if isDecryptMode {
-            translatedText = languageManager.decrypt(text: inputText, using: language)
+            translatedText = languageManager.decrypt(text: inputText, using: language, isPremium: premiumManager.isPremium)
         } else {
-            translatedText = languageManager.translate(text: inputText, using: language)
+            translatedText = languageManager.translate(text: inputText, using: language, isPremium: premiumManager.isPremium)
         }
     }
     
@@ -758,15 +829,47 @@ struct LanguageListView: View {
             List {
                 ForEach(languageManager.languages) { language in
                     let isAccessible = languageManager.isLanguageAccessible(language, isPremium: premiumManager.isPremium)
+                    let canUseAllFeatures = languageManager.canUseLanguageFeatures(language, isPremium: premiumManager.isPremium)
+                    let hasPremiumFeatures = !language.numberMapping.isEmpty
                     
                     if isAccessible {
                         NavigationLink(destination: LanguageDetailView(language: language)) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(language.name)
-                                    .font(.headline)
-                                Text("\(language.mapping.count) letters mapped")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                                HStack {
+                                    Text(language.name)
+                                        .font(.headline)
+                                    Spacer()
+                                    
+                                    // Show warning if language has premium features but user can't access them
+                                    if hasPremiumFeatures && !canUseAllFeatures {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundColor(.orange)
+                                                .font(.caption)
+                                            Image(systemName: "crown.fill")
+                                                .foregroundColor(.yellow)
+                                                .font(.caption)
+                                        }
+                                    }
+                                }
+                                
+                                HStack {
+                                    Text("\(language.mapping.count) letters")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                    
+                                    if !language.numberMapping.isEmpty {
+                                        Text("• \(language.numberMapping.count) numbers")
+                                            .font(.caption)
+                                            .foregroundColor(canUseAllFeatures ? .gray : .orange)
+                                        
+                                        if !canUseAllFeatures {
+                                            Text("(Premium)")
+                                                .font(.caption)
+                                                .foregroundColor(.orange)
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -784,9 +887,19 @@ struct LanguageListView: View {
                                             .foregroundColor(.teal)
                                             .font(.caption)
                                     }
-                                    Text("\(language.mapping.count) letters mapped • Premium Required")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
+                                    HStack {
+                                        Text("\(language.mapping.count) letters")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                        if !language.numberMapping.isEmpty {
+                                            Text("• \(language.numberMapping.count) numbers")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                        Text("• Premium Required")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
                                 }
                             }
                         }
@@ -868,7 +981,14 @@ struct LanguageListView: View {
         
         if let importedLanguage = languageManager.importLanguage(from: importText) {
             languageManager.addLanguage(importedLanguage)
-            importResultMessage = "Language '\(importedLanguage.name)' imported successfully! 🎉"
+            
+            // Check if imported language has premium features
+            let hasPremiumFeatures = !importedLanguage.numberMapping.isEmpty
+            if hasPremiumFeatures && !premiumManager.isPremium {
+                importResultMessage = "Language '\(importedLanguage.name)' imported successfully! 🎉\n\n⚠️ Note: This language contains premium features (number mappings). You can use letters only, or upgrade to Premium to unlock all features."
+            } else {
+                importResultMessage = "Language '\(importedLanguage.name)' imported successfully! 🎉"
+            }
             importText = ""
         } else {
             importResultMessage = "Invalid language key or language already exists."
@@ -883,6 +1003,7 @@ struct CreateLanguageView: View {
     @EnvironmentObject var premiumManager: PremiumManager
     @State private var languageName = ""
     @State private var letterMappings: [Character: String] = [:]
+    @State private var numberMappings: [Character: String] = [:] // New: for number mappings
     @State private var showSuccessAlert = false
     @State private var showGenerateOptions = false
     @State private var showDuplicateAlert = false
@@ -890,6 +1011,7 @@ struct CreateLanguageView: View {
     @Environment(\.presentationMode) var presentationMode
     
     private let alphabet = "abcdefghijklmnopqrstuvwxyz"
+    private let numbers = "0123456789"
     
     var body: some View {
         NavigationView {
@@ -929,10 +1051,49 @@ struct CreateLanguageView: View {
                             TextField("Map to...", text: Binding(
                                 get: { letterMappings[letter] ?? "" },
                                 set: { newValue in
-                                    validateAndSetMapping(for: letter, value: newValue)
+                                    validateAndSetLetterMapping(for: letter, value: newValue)
                                 }
                             ))
                             .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+                    }
+                }
+                
+                // Number Mappings Section (Premium Only)
+                if premiumManager.isPremium {
+                    Section(header:
+                        HStack {
+                            Text("Number Mappings")
+                            Spacer()
+                            Image(systemName: "crown.fill")
+                                .foregroundColor(.yellow)
+                                .font(.caption)
+                            HStack(spacing: 8) {
+                                Button("Clear Numbers") {
+                                    numberMappings.removeAll()
+                                }
+                                .font(.caption)
+                                .foregroundColor(.red)
+                            }
+                        }
+                    ) {
+                        ForEach(Array(numbers), id: \.self) { number in
+                            HStack {
+                                Text(String(number))
+                                    .font(.headline)
+                                    .frame(width: 30)
+                                
+                                Image(systemName: "arrow.right")
+                                    .foregroundColor(.gray)
+                                
+                                TextField("Map to...", text: Binding(
+                                    get: { numberMappings[number] ?? "" },
+                                    set: { newValue in
+                                        validateAndSetNumberMapping(for: number, value: newValue)
+                                    }
+                                ))
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                            }
                         }
                     }
                 }
@@ -969,6 +1130,7 @@ struct CreateLanguageView: View {
                         // Clear all mappings
                         languageName = ""
                         letterMappings.removeAll()
+                        numberMappings.removeAll()
                         
                         // Dismiss the create view
                         presentationMode.wrappedValue.dismiss()
@@ -1029,7 +1191,7 @@ struct CreateLanguageView: View {
         .navigationViewStyle(StackNavigationViewStyle())
     }
     
-    private func validateAndSetMapping(for letter: Character, value: String) {
+    private func validateAndSetLetterMapping(for letter: Character, value: String) {
         let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // If empty, just remove the mapping
@@ -1038,7 +1200,7 @@ struct CreateLanguageView: View {
             return
         }
         
-        // Check for duplicates (case-insensitive)
+        // Check for duplicates in letter mappings (case-insensitive)
         for (existingLetter, existingValue) in letterMappings {
             if existingLetter != letter &&
                existingValue.lowercased() == trimmedValue.lowercased() {
@@ -1048,8 +1210,51 @@ struct CreateLanguageView: View {
             }
         }
         
+        // Check for duplicates in number mappings (if premium)
+        if premiumManager.isPremium {
+            for (existingNumber, existingValue) in numberMappings {
+                if existingValue.lowercased() == trimmedValue.lowercased() {
+                    duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingNumber)'. Each cipher character can only be used once."
+                    showDuplicateAlert = true
+                    return
+                }
+            }
+        }
+        
         // If no duplicates, set the mapping
         letterMappings[letter] = trimmedValue
+    }
+    
+    private func validateAndSetNumberMapping(for number: Character, value: String) {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If empty, just remove the mapping
+        if trimmedValue.isEmpty {
+            numberMappings[number] = nil
+            return
+        }
+        
+        // Check for duplicates in number mappings
+        for (existingNumber, existingValue) in numberMappings {
+            if existingNumber != number &&
+               existingValue.lowercased() == trimmedValue.lowercased() {
+                duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingNumber)'. Each cipher character can only be used once."
+                showDuplicateAlert = true
+                return
+            }
+        }
+        
+        // Check for duplicates in letter mappings
+        for (existingLetter, existingValue) in letterMappings {
+            if existingValue.lowercased() == trimmedValue.lowercased() {
+                duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingLetter.uppercased())'. Each cipher character can only be used once."
+                showDuplicateAlert = true
+                return
+            }
+        }
+        
+        // If no duplicates, set the mapping
+        numberMappings[number] = trimmedValue
     }
     
     private func hideKeyboard() {
@@ -1064,7 +1269,7 @@ struct CreateLanguageView: View {
             return
         }
         
-        let newLanguage = CustomLanguage(name: languageName, mapping: letterMappings)
+        let newLanguage = CustomLanguage(name: languageName, mapping: letterMappings, numberMapping: numberMappings)
         languageManager.addLanguage(newLanguage)
         languageManager.selectedLanguage = newLanguage
         
@@ -1078,6 +1283,7 @@ struct CreateLanguageView: View {
     // MARK: - Generation Functions
     private func generateShuffledLetters() {
         letterMappings.removeAll()
+        numberMappings.removeAll()
         
         let vowels = ["a", "e", "i", "o", "u"]
         let consonants = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "x", "y", "z"]
@@ -1097,10 +1303,32 @@ struct CreateLanguageView: View {
                 letterMappings[letter] = consonantMappings[consonantIndex].uppercased()
             }
         }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let numberArray = Array(numbers)
+            let shuffledNumbers = numberArray.shuffled()
+            
+            for (index, number) in numberArray.enumerated() {
+                // Map each number to a different number
+                var mappedNumber = shuffledNumbers[index]
+                // Ensure no self-mapping
+                var attempts = 0
+                while mappedNumber == number && attempts < 10 {
+                    numberMappings[number] = String(numberArray.randomElement() ?? number)
+                    mappedNumber = Character(numberMappings[number] ?? String(number))
+                    attempts += 1
+                }
+                if mappedNumber != number {
+                    numberMappings[number] = String(mappedNumber)
+                }
+            }
+        }
     }
     
     private func generateNumbers() {
         letterMappings.removeAll()
+        numberMappings.removeAll()
         
         // Separate vowels and consonants for mapping
         let vowels = ["a", "e", "i", "o", "u"]
@@ -1140,6 +1368,21 @@ struct CreateLanguageView: View {
                 // Map consonants to shuffled alphanumeric characters
                 let consonantIndex = consonants.firstIndex(of: String(letter))!
                 letterMappings[letter] = shuffledConsonantPool[consonantIndex]
+            }
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            // Map numbers to letters not used by letter mappings
+            let usedChars = Set(letterMappings.values.map { $0.lowercased() })
+            let availableLetters = ["B", "C", "D", "F", "G", "H", "J", "K", "L", "M"]
+                .filter { !usedChars.contains($0.lowercased()) }
+                .shuffled()
+            
+            for (index, number) in numbers.enumerated() {
+                if index < availableLetters.count {
+                    numberMappings[number] = availableLetters[index]
+                }
             }
         }
     }
@@ -1218,9 +1461,20 @@ struct CreateLanguageView: View {
         let shuffledEmojis = selectedCollection.shuffled()
         
         letterMappings.removeAll()
+        numberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             letterMappings[letter] = shuffledEmojis[index]
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let numberEmojis = ["🔥", "⭐", "💎", "🌟", "✨", "💫", "⚡", "🌈", "☀️", "🌙"]
+            let shuffledNumberEmojis = numberEmojis.shuffled()
+            
+            for (index, number) in numbers.enumerated() {
+                numberMappings[number] = shuffledNumberEmojis[index]
+            }
         }
     }
     
@@ -1234,9 +1488,20 @@ struct CreateLanguageView: View {
         // Verify we have exactly 26 symbols, then shuffle
         let shuffledSymbols = symbols.shuffled()
         letterMappings.removeAll()
+        numberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             letterMappings[letter] = shuffledSymbols[index]
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let numberSymbols = ["#", "@", "&", "%", "$", "!", "?", "+", "-", "="]
+            let shuffledNumberSymbols = numberSymbols.shuffled()
+            
+            for (index, number) in numbers.enumerated() {
+                numberMappings[number] = shuffledNumberSymbols[index]
+            }
         }
     }
     
@@ -1252,9 +1517,20 @@ struct CreateLanguageView: View {
         // Shuffle the combined pool
         let shuffledMix = allCharacters.shuffled()
         letterMappings.removeAll()
+        numberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             letterMappings[letter] = shuffledMix[index]
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let mixedNumberChars = ["🎯", "🎲", "🎪", "🎨", "🎭", "🎪", "🎸", "🎵", "🎬", "🎮"]
+            let shuffledMixedNumbers = mixedNumberChars.shuffled()
+            
+            for (index, number) in self.numbers.enumerated() {
+                numberMappings[number] = shuffledMixedNumbers[index]
+            }
         }
     }
 }
@@ -1267,6 +1543,7 @@ struct LanguageDetailView: View {
     @State private var isEditing = false
     @State private var tempName: String
     @State private var tempMappings: [Character: String]
+    @State private var tempNumberMappings: [Character: String] // New: temp number mappings
     @State private var showGenerateOptions = false
     @State private var showDeleteAlert = false
     @State private var showReshareAlert = false
@@ -1278,9 +1555,11 @@ struct LanguageDetailView: View {
         self.originalLanguage = language
         self._tempName = State(initialValue: language.name)
         self._tempMappings = State(initialValue: language.mapping)
+        self._tempNumberMappings = State(initialValue: language.numberMapping)
     }
     
     private let alphabet = "abcdefghijklmnopqrstuvwxyz"
+    private let numbers = "0123456789"
     
     // Get the current language from the manager
     private var currentLanguage: CustomLanguage {
@@ -1331,13 +1610,57 @@ struct LanguageDetailView: View {
                             TextField("Map to...", text: Binding(
                                 get: { tempMappings[letter] ?? "" },
                                 set: { newValue in
-                                    validateAndSetMapping(for: letter, value: newValue)
+                                    validateAndSetLetterMapping(for: letter, value: newValue)
                                 }
                             ))
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                         } else {
                             Text(currentLanguage.mapping[letter] ?? "Not set")
                                 .foregroundColor(currentLanguage.mapping[letter] == nil ? .gray : .primary)
+                        }
+                    }
+                }
+            }
+            
+            // Number Mappings Section (Premium Only)
+            if premiumManager.isPremium {
+                Section(header:
+                    HStack {
+                        Text("Number Mappings")
+                        Spacer()
+                        Image(systemName: "crown.fill")
+                            .foregroundColor(.yellow)
+                            .font(.caption)
+                        if isEditing {
+                            Button("Clear Numbers") {
+                                tempNumberMappings.removeAll()
+                            }
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        }
+                    }
+                ) {
+                    ForEach(Array(numbers), id: \.self) { number in
+                        HStack {
+                            Text(String(number))
+                                .font(.headline)
+                                .frame(width: 30)
+                            
+                            Image(systemName: "arrow.right")
+                                .foregroundColor(.gray)
+                            
+                            if isEditing {
+                                TextField("Map to...", text: Binding(
+                                    get: { tempNumberMappings[number] ?? "" },
+                                    set: { newValue in
+                                        validateAndSetNumberMapping(for: number, value: newValue)
+                                    }
+                                ))
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                            } else {
+                                Text(currentLanguage.numberMapping[number] ?? "Not set")
+                                    .foregroundColor(currentLanguage.numberMapping[number] == nil ? .gray : .primary)
+                            }
                         }
                     }
                 }
@@ -1444,7 +1767,7 @@ struct LanguageDetailView: View {
         }
     }
     
-    private func validateAndSetMapping(for letter: Character, value: String) {
+    private func validateAndSetLetterMapping(for letter: Character, value: String) {
         let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
         
         // If empty, just remove the mapping
@@ -1453,7 +1776,7 @@ struct LanguageDetailView: View {
             return
         }
         
-        // Check for duplicates (case-insensitive)
+        // Check for duplicates in letter mappings (case-insensitive)
         for (existingLetter, existingValue) in tempMappings {
             if existingLetter != letter &&
                existingValue.lowercased() == trimmedValue.lowercased() {
@@ -1463,8 +1786,51 @@ struct LanguageDetailView: View {
             }
         }
         
+        // Check for duplicates in number mappings (if premium)
+        if premiumManager.isPremium {
+            for (existingNumber, existingValue) in tempNumberMappings {
+                if existingValue.lowercased() == trimmedValue.lowercased() {
+                    duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingNumber)'. Each cipher character can only be used once."
+                    showDuplicateAlert = true
+                    return
+                }
+            }
+        }
+        
         // If no duplicates, set the mapping
         tempMappings[letter] = trimmedValue
+    }
+    
+    private func validateAndSetNumberMapping(for number: Character, value: String) {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If empty, just remove the mapping
+        if trimmedValue.isEmpty {
+            tempNumberMappings[number] = nil
+            return
+        }
+        
+        // Check for duplicates in number mappings
+        for (existingNumber, existingValue) in tempNumberMappings {
+            if existingNumber != number &&
+               existingValue.lowercased() == trimmedValue.lowercased() {
+                duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingNumber)'. Each cipher character can only be used once."
+                showDuplicateAlert = true
+                return
+            }
+        }
+        
+        // Check for duplicates in letter mappings
+        for (existingLetter, existingValue) in tempMappings {
+            if existingValue.lowercased() == trimmedValue.lowercased() {
+                duplicateMessage = "'\(trimmedValue)' is already mapped to '\(existingLetter.uppercased())'. Each cipher character can only be used once."
+                showDuplicateAlert = true
+                return
+            }
+        }
+        
+        // If no duplicates, set the mapping
+        tempNumberMappings[number] = trimmedValue
     }
     
     private func hideKeyboard() {
@@ -1485,16 +1851,20 @@ struct LanguageDetailView: View {
         // Reset temp values to current language state when starting to edit
         tempName = currentLanguage.name
         tempMappings = currentLanguage.mapping
+        tempNumberMappings = currentLanguage.numberMapping
         isEditing = true
     }
     
     private func saveChanges() {
         // Check if anything actually changed
-        let hasChanges = tempName != currentLanguage.name || tempMappings != currentLanguage.mapping
+        let hasChanges = tempName != currentLanguage.name ||
+                        tempMappings != currentLanguage.mapping ||
+                        tempNumberMappings != currentLanguage.numberMapping
         
         var updatedLanguage = currentLanguage
         updatedLanguage.name = tempName
         updatedLanguage.mapping = tempMappings
+        updatedLanguage.numberMapping = tempNumberMappings
         languageManager.updateLanguage(updatedLanguage)
         isEditing = false
         
@@ -1513,14 +1883,35 @@ struct LanguageDetailView: View {
     private func generateShuffledLetters() {
         let shuffledAlphabet = Array(alphabet).shuffled()
         tempMappings.removeAll()
+        tempNumberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             tempMappings[letter] = String(shuffledAlphabet[index]).uppercased()
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let numberArray = Array(numbers)
+            let shuffledNumbers = numberArray.shuffled()
+            
+            for (index, number) in numberArray.enumerated() {
+                var mappedNumber = shuffledNumbers[index]
+                // Ensure no self-mapping
+                var attempts = 0
+                while mappedNumber == number && attempts < 10 {
+                    mappedNumber = numberArray.randomElement() ?? number
+                    attempts += 1
+                }
+                if mappedNumber != number {
+                    tempNumberMappings[number] = String(mappedNumber)
+                }
+            }
         }
     }
     
     private func generateNumbers() {
         tempMappings.removeAll()
+        tempNumberMappings.removeAll()
         
         // Create 26 unique alphanumeric combinations
         var alphanumeric: [String] = []
@@ -1542,6 +1933,18 @@ struct LanguageDetailView: View {
         for (index, letter) in alphabet.enumerated() {
             tempMappings[letter] = alphanumeric[index]
         }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let availableLetters = ["Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
+            let shuffledLetters = availableLetters.shuffled()
+            
+            for (index, number) in numbers.enumerated() {
+                if index < shuffledLetters.count {
+                    tempNumberMappings[number] = shuffledLetters[index]
+                }
+            }
+        }
     }
     
     private func generateEmojis() {
@@ -1558,9 +1961,20 @@ struct LanguageDetailView: View {
         let shuffledEmojis = selectedCollection.shuffled()
         
         tempMappings.removeAll()
+        tempNumberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             tempMappings[letter] = shuffledEmojis[index]
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let numberEmojis = ["🔥", "⭐", "💎", "🌟", "✨", "💫", "⚡", "🌈", "☀️", "🌙"]
+            let shuffledNumberEmojis = numberEmojis.shuffled()
+            
+            for (index, number) in numbers.enumerated() {
+                tempNumberMappings[number] = shuffledNumberEmojis[index]
+            }
         }
     }
     
@@ -1572,9 +1986,20 @@ struct LanguageDetailView: View {
         
         let shuffledSymbols = symbols.shuffled()
         tempMappings.removeAll()
+        tempNumberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             tempMappings[letter] = shuffledSymbols[index]
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let numberSymbols = ["#", "@", "&", "%", "$", "!", "?", "+", "-", "="]
+            let shuffledNumberSymbols = numberSymbols.shuffled()
+            
+            for (index, number) in numbers.enumerated() {
+                tempNumberMappings[number] = shuffledNumberSymbols[index]
+            }
         }
     }
     
@@ -1587,9 +2012,20 @@ struct LanguageDetailView: View {
         let allCharacters = letters + numbers + symbols + emojis
         let shuffledMix = allCharacters.shuffled()
         tempMappings.removeAll()
+        tempNumberMappings.removeAll()
         
         for (index, letter) in alphabet.enumerated() {
             tempMappings[letter] = shuffledMix[index]
+        }
+        
+        // Generate number mappings if premium
+        if premiumManager.isPremium {
+            let mixedNumberChars = ["🎯", "🎲", "🎪", "🎨", "🎭", "🎸", "🎵", "🎬", "🎮", "🚀"]
+            let shuffledMixedNumbers = mixedNumberChars.shuffled()
+            
+            for (index, number) in self.numbers.enumerated() {
+                tempNumberMappings[number] = shuffledMixedNumbers[index]
+            }
         }
     }
 }
@@ -1597,6 +2033,7 @@ struct LanguageDetailView: View {
 // MARK: - How To View
 struct HowToView: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var premiumManager: PremiumManager
     @State private var selectedStep: Int? = nil
     
     var body: some View {
@@ -1657,6 +2094,7 @@ struct HowToView: View {
                                     "Navigate to the 'Create' tab",
                                     "Enter a unique name for your language",
                                     "Map each letter A-Z to new characters",
+                                    premiumManager.isPremium ? "Map numbers 0-9 to characters (Premium)" : "Upgrade to Premium to map numbers 0-9",
                                     "Use 'Generate for Me' for instant creation",
                                     "Save your masterpiece"
                                 ]
@@ -1715,7 +2153,7 @@ struct HowToView: View {
                                     "Go to the 'Translate' tab",
                                     "Select your language from dropdown",
                                     "Choose '🔒 Encrypt' mode",
-                                    "Type your secret message",
+                                    "Type your secret message (letters and numbers!)",
                                     "Copy the encrypted result"
                                 ]
                             ) {
@@ -1770,7 +2208,11 @@ struct HowToView: View {
                             )
                             ProTipRow(
                                 icon: "crown.fill",
-                                tip: "Premium unlocks unlimited languages and SMS sending"
+                                tip: "Premium unlocks unlimited languages, number mapping, and SMS sending"
+                            )
+                            ProTipRow(
+                                icon: "123.rectangle",
+                                tip: "Premium users can map numbers 0-9 to any characters (e.g., 3 → L)"
                             )
                             ProTipRow(
                                 icon: "exclamationmark.triangle.fill",
@@ -1787,7 +2229,7 @@ struct HowToView: View {
                             Image(systemName: "doc.text.fill")
                                 .foregroundColor(.blue)
                                 .font(.title3)
-                            Text("Example")
+                            Text("Examples")
                                 .font(.title2)
                                 .fontWeight(.semibold)
                             Spacer()
@@ -1796,18 +2238,76 @@ struct HowToView: View {
                         
                         VStack(spacing: 16) {
                             ExampleCard(
-                                title: "Simple Mapping",
+                                title: "Simple Letter Mapping",
                                 mapping: "H→C, E→A, Y→T",
                                 original: "HEY",
                                 encrypted: "CAT"
                             )
                             .padding(.horizontal, 20)
                             
+                            if premiumManager.isPremium {
+                                ExampleCard(
+                                    title: "Premium: Letters + Numbers",
+                                    mapping: "A→🔥, R→4, O→$, N→♠, 3→L, 0→X",
+                                    original: "AARON30",
+                                    encrypted: "🔥🔥4$♠LX"
+                                )
+                                .padding(.horizontal, 20)
+                            } else {
+                                Button {
+                                    premiumManager.showPaywall = true
+                                } label: {
+                                    VStack(spacing: 12) {
+                                        HStack {
+                                            Image(systemName: "crown.fill")
+                                                .foregroundColor(.yellow)
+                                            Text("Premium Feature")
+                                                .font(.headline)
+                                                .fontWeight(.semibold)
+                                            Spacer()
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text("Number Mapping Example:")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                            
+                                            Text("Map: A→🔥, R→4, 3→L, 0→X")
+                                                .font(.system(.caption, design: .monospaced))
+                                                .foregroundColor(.teal)
+                                            
+                                            Text("AARON30 → 🔥🔥4$♠LX")
+                                                .font(.system(.caption, design: .monospaced))
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(Color.green.opacity(0.1))
+                                                .cornerRadius(6)
+                                        }
+                                        
+                                        Text("Tap to unlock number mapping!")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color(.secondarySystemBackground))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(Color.yellow.opacity(0.3), lineWidth: 2)
+                                            )
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(.horizontal, 20)
+                            }
+                            
                             ExampleCard(
-                                title: "Emojis, Symbols, and Numbers",
-                                mapping: "A→🔥, A→4, R→$, O→E, N→♠",
-                                original: "AARON",
-                                encrypted: "🔥4$E♠"
+                                title: "Complex: Emojis & Symbols",
+                                mapping: "H→😊, I→★, space→•",
+                                original: "HI THERE",
+                                encrypted: "😊★•⭐😊4🔥"
                             )
                             .padding(.horizontal, 20)
                         }
@@ -2160,48 +2660,53 @@ struct PaywallView: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 30) {
-                VStack(spacing: 10) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(.yellow)
-                    
-                    Text("Unlock Premium")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                    
-                    Text("Get unlimited languages and features")
-                        .font(.headline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                }
-                
-                VStack(alignment: .leading, spacing: 15) {
-                    FeatureRow(icon: "infinity", title: "Unlimited Languages", description: "Create as many secret languages as you want")
-                    FeatureRow(icon: "textformat.size.larger", title: "Longer Messages", description: "Translate up to 500+ characters at once")
-                    FeatureRow(icon: "message.fill", title: "Send SMS", description: "Send translated messages directly via text message")
-                    FeatureRow(icon: "face.smiling", title: "Emoji Mode", description: "Use emojis and special characters in your codes")
-                    FeatureRow(icon: "wand.and.stars", title: "Advanced Generation", description: "More generation styles and customization options")
-                }
-                
-                VStack(spacing: 15) {
-                    Button("Start Free Trial") {
-                        premiumManager.purchasePremium()
+            ScrollView {
+                VStack(spacing: 30) {
+                    VStack(spacing: 10) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(.yellow)
+                        
+                        Text("Unlock Premium")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                        
+                        Text("Get unlimited languages and features")
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
                     }
-                    .buttonStyle(PremiumButtonStyle())
+                    .padding(.top, 20)
                     
-                    Text("$1.99/month or $9.99/year")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
+                    VStack(alignment: .leading, spacing: 20) {
+                        FeatureRow(icon: "infinity", title: "Unlimited Languages", description: "Create as many secret languages as you want")
+                        FeatureRow(icon: "textformat.size.larger", title: "Longer Messages", description: "Translate up to 500+ characters at once")
+                        FeatureRow(icon: "123.rectangle", title: "Number Mapping", description: "Map numbers 0-9 to any characters (e.g., 3 → L)")
+                        FeatureRow(icon: "message.fill", title: "Send SMS", description: "Send translated messages directly via text message")
+                        FeatureRow(icon: "face.smiling", title: "Emoji Mode", description: "Use emojis and special characters in your codes")
+                        FeatureRow(icon: "wand.and.stars", title: "Advanced Generation", description: "More generation styles and customization options")
+                    }
+                    .padding(.horizontal, 20)
                     
-                    Text("Cancel anytime")
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                    VStack(spacing: 15) {
+                        Button("Start Free Trial") {
+                            premiumManager.purchasePremium()
+                        }
+                        .buttonStyle(PremiumButtonStyle())
+                        
+                        Text("$1.99/month or $9.99/year")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                        
+                        Text("Cancel anytime")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    Spacer(minLength: 40)
                 }
-                
-                Spacer()
             }
-            .padding()
             .navigationTitle("Premium")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2222,22 +2727,29 @@ struct FeatureRow: View {
     let description: String
     
     var body: some View {
-        HStack(spacing: 15) {
+        HStack(alignment: .top, spacing: 15) {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundColor(.teal) // Changed from .purple
-                .frame(width: 30)
+                .frame(width: 30, height: 30, alignment: .top)
             
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                
                 Text(description)
                     .font(.subheadline)
                     .foregroundColor(.gray)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             
-            Spacer()
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -2261,20 +2773,6 @@ struct PremiumButtonStyle: ButtonStyle {
 }
 
 // MARK: - Adaptive Layout Extensions
-extension View {
-    @ViewBuilder
-    func adaptiveStack<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            HStack(content: content)
-        } else {
-            VStack(content: content)
-        }
-    }
-}
-
-// MARK: - Device Size Helper
 struct DeviceSize {
     static var isIPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
