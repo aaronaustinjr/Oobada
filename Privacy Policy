@@ -7,7 +7,7 @@ Oobada ("we," "our," or "us") is committed to protecting your privacy. This Priv
 Information We Collect
 We currently do not collect any data from your use of Oobada.
 
-**Information Automatically Collected**
+Information Automatically Collected
 This information may be collected via Apple, and we may have access to it but we do not collect it directly:
 
 Device Information: Device type, operating system version, and app version
@@ -22,14 +22,9 @@ Contact Information: We do not access your contacts or phone numbers
 Location Data: We do not collect or track your location
 
 How We Use Your Information
-We use the collected information to:
+We use the automatically collected information to:
 
-Provide App Functionality: Enable you to create, save, and manage custom languages
-Maintain Your Preferences: Remember your app settings between sessions
-Process Subscriptions: Manage premium feature access through Apple's App Store
 Improve the App: Analyze usage patterns to enhance user experience
-Customer Support: Respond to your inquiries and provide technical assistance
-Legal Compliance: Meet applicable legal obligations
 
 Data Storage and Security
 Local Storage
@@ -50,7 +45,7 @@ We never sell, rent, or trade your personal information to third parties.
 Limited Sharing
 We may share information only in these circumstances:
 
-Apple App Store: Subscription status for premium feature management
+Apple App Store: Subscription purchase and status for premium feature management
 Analytics Providers: Anonymized usage data to improve app performance
 Legal Requirements: When required by law or to protect our rights
 Business Transfers: In the event of a merger or acquisition (with the same privacy protections)
@@ -61,19 +56,16 @@ Export/Import: You control when and with whom you share your custom languages
 Message Sharing: You control all sharing of encrypted messages through your device's standard sharing features
 
 Third-Party Services
-Apple App Store
+Apple App Store:
 
 Subscription management and in-app purchases
+Crash reports
+Device analytics
+
 Subject to Apple's Privacy Policy
 
-Analytics Services
-
-Anonymized usage statistics only
-No personally identifiable information shared
-Used solely for app improvement purposes
-
 Children's Privacy
-Oobada is designed to be family-friendly. If you would like data to be deleted, please contact us immediately.
+Oobada is designed to be family-friendly. We do not store your data, so if you would like your data to be deleted, simply uninstall the app and remove any related files from your device.
 
 Your Rights and Choices
 Access and Control
@@ -90,17 +82,17 @@ Cancel Anytime: Premium subscriptions can be cancelled through iOS Settings
 Opt-Out Options
 
 Analytics: Disable through iOS Privacy Settings > Analytics & Improvements
-Personalized Ads: Control through iOS Settings > Privacy > Apple Advertising
 
 Data Retention
 
 Custom Languages: Retained until you delete them or uninstall the app
 App Preferences: Retained until app deletion or manual reset
 Subscription Data: Managed by Apple according to their policies
-Analytics Data: Anonymized and retained for app improvement purposes only
+Analytics Data: Managed by Apple according to their policies
 
 International Users
 Oobada is available worldwide. If you use the app outside the United States, your information may be transferred to and processed in the United States, where our service providers are located.
+
 Changes to This Privacy Policy
 We may update this Privacy Policy periodically. When we make changes:
 
@@ -111,8 +103,8 @@ Continued use of the app constitutes acceptance of changes
 Contact Us
 If you have questions about this Privacy Policy or our privacy practices:
 Email: aaronaustinjr@rocketmail.com
-Website: [your-website.com]
 App Store: Search "Oobada" and use the developer contact option
+
 California Privacy Rights
 California residents have additional rights under the California Consumer Privacy Act (CCPA):
 
