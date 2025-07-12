@@ -10,9 +10,9 @@ We currently do not collect any data from your use of Oobada.
 Information Automatically Collected
 This information may be collected via Apple, and we may have access to it but we do not collect it directly:
 
-Device Information: Device type, operating system version, and app version
-Usage Analytics: Basic app usage statistics to improve functionality
-Crash Reports: Technical data to identify and fix app issues
+Device Information: Device type, operating system version, and app version. Managed by Apple according to their policies
+Usage Analytics: Basic app usage statistics to improve functionality. Managed by Apple according to their policies
+Crash Reports: Technical data to identify and fix app issues. Managed by Apple according to their policies
 
 Information We Do NOT Collect
 
@@ -24,7 +24,7 @@ Location Data: We do not collect or track your location
 How We Use Your Information
 We use the automatically collected information to:
 
-Improve the App: Analyze usage patterns to enhance user experience
+Improve the App: fix errors and rectify app crashes 
 
 Data Storage and Security
 Local Storage
