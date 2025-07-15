@@ -8,7 +8,7 @@ Information We Collect
 We currently do not collect any data from your use of Oobada.
 
 Information Automatically Collected
-This information may be collected via Apple, and we may have access to it but we do not collect it directly:
+This information may be collected by Apple, and we may have access to it but we do not collect it directly:
 
 Device Information: Device type, operating system version, and app version. Managed by Apple according to their policies
 Usage Analytics: Basic app usage statistics to improve functionality. Managed by Apple according to their policies
@@ -65,7 +65,7 @@ Device analytics
 Subject to Apple's Privacy Policy
 
 Children's Privacy
-Oobada is designed to be family-friendly. We do not store your data, so if you would like your data to be deleted, simply uninstall the app and remove any related files from your device.
+Oobada is designed to be family-friendly. We do not store your data, including your created languages, translations, and messages. If you would like your created languages to be deleted, simply delete them in the app, or uninstall the app and remove any related files from your device.
 
 Your Rights and Choices
 Access and Control
@@ -85,8 +85,8 @@ Analytics: Disable through iOS Privacy Settings > Analytics & Improvements
 
 Data Retention
 
-Custom Languages: Retained until you delete them or uninstall the app
-App Preferences: Retained until app deletion or manual reset
+Custom Languages: Retained on your device until you delete them or uninstall the app
+App Preferences: Retained on your device until app deletion or manual reset
 Subscription Data: Managed by Apple according to their policies
 Analytics Data: Managed by Apple according to their policies
 
