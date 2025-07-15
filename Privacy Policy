@@ -8,14 +8,15 @@ Information We Collect
 We currently do not collect any data from your use of Oobada.
 
 Information Automatically Collected
-This information may be collected by Apple, and we may have access to it but we do not collect it directly:
+This information may be collected by Apple or their services. We do not directly collect this information from your use of the Oobada app:
 
-Device Information: Device type, operating system version, and app version. Managed by Apple according to their policies
-Usage Analytics: Basic app usage statistics to improve functionality. Managed by Apple according to their policies
-Crash Reports: Technical data to identify and fix app issues. Managed by Apple according to their policies
+Device Information: Device type and operating system version. Managed by Apple according to their policies, if they collect it
+Usage Analytics: Basic app usage statistics to improve functionality. Managed by Apple according to their policies, if they collect it
+Crash Reports: Technical data to identify and fix app issues. Managed by Apple according to their policies, if they collect it
 
 Information We Do NOT Collect
 
+As mentioned earlier, we do not collect any data from the use of our app, but this information in particular we would like to empasize we do not collect:
 Your Messages: We never collect, store, or transmit the actual text you encrypt or decrypt
 Personal Communications: Any messages you send via SMS or share with others
 Contact Information: We do not access your contacts or phone numbers
